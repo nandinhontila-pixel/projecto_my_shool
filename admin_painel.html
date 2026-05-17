@@ -1,0 +1,1493 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Painel Admin — Ntila</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#060709; --surface:rgba(14,16,22,0.92); --border:rgba(255,255,255,0.08);
+  --border2:rgba(255,255,255,0.14); --gold:#c9a84c; --gold2:#e8c97a;
+  --green:#22c55e; --red:#ef4444; --blue:#3b82f6; --purple:#a855f7;
+  --orange:#f97316; --cream:#e2ddd5; --muted:#6b7280;
+  --blur:blur(20px); --r:12px; --r-sm:8px;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--cream);font-family:'Syne',sans-serif;font-size:14px;line-height:1.5;}
+body::before{
+  content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(ellipse 70% 50% at 10% 10%,rgba(201,168,76,.07) 0%,transparent 55%),
+    radial-gradient(ellipse 60% 60% at 90% 90%,rgba(59,130,246,.05) 0%,transparent 55%),
+    radial-gradient(ellipse 50% 40% at 50% 50%,rgba(168,85,247,.03) 0%,transparent 60%);
+  animation:bgPulse 14s ease-in-out infinite alternate;
+}
+@keyframes bgPulse{0%{opacity:1}100%{opacity:.65}}
+
+/* ═══ LOGIN ═══ */
+#loginScreen{
+  position:fixed;inset:0;z-index:1000;
+  display:flex;align-items:center;justify-content:center;padding:24px;
+  background:var(--bg);
+}
+.login-card{
+  width:100%;max-width:360px;
+  background:var(--surface);backdrop-filter:var(--blur);
+  border:1px solid var(--border);border-radius:20px;
+  padding:36px 28px;box-shadow:0 32px 80px rgba(0,0,0,.65);
+  animation:fadeUp .5s cubic-bezier(.2,.8,.2,1);
+}
+@keyframes fadeUp{from{opacity:0;transform:translateY(28px) scale(.96)}to{opacity:1;transform:none}}
+.login-logo{text-align:center;margin-bottom:28px;}
+.login-logo .licon{
+  width:64px;height:64px;border-radius:18px;margin:0 auto 14px;
+  background:linear-gradient(135deg,rgba(201,168,76,.2),rgba(201,168,76,.04));
+  border:1px solid rgba(201,168,76,.3);
+  display:flex;align-items:center;justify-content:center;font-size:28px;
+  box-shadow:0 0 40px rgba(201,168,76,.15);
+}
+.login-logo h1{font-size:20px;font-weight:800;color:var(--cream);}
+.login-logo p{font-size:11px;letter-spacing:3px;color:var(--muted);text-transform:uppercase;margin-top:4px;font-family:'JetBrains Mono',monospace;}
+.lfield{margin-bottom:14px;}
+.lfield label{display:block;font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:7px;font-family:'JetBrains Mono',monospace;}
+.lfield input{
+  width:100%;padding:13px 16px;
+  background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:var(--r-sm);
+  color:var(--cream);font-family:'JetBrains Mono',monospace;font-size:15px;outline:none;transition:all .2s;
+}
+.lfield input:focus{border-color:var(--gold);background:rgba(201,168,76,.05);}
+.lfield input::placeholder{color:var(--muted);}
+.login-btn{
+  width:100%;padding:14px;margin-top:8px;
+  background:linear-gradient(135deg,rgba(201,168,76,.9),rgba(232,201,122,.8));
+  color:#000;border:none;border-radius:var(--r-sm);
+  font-family:'Syne',sans-serif;font-size:14px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
+  cursor:pointer;transition:all .25s;box-shadow:0 4px 24px rgba(201,168,76,.22);
+}
+.login-btn:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(201,168,76,.38);}
+.login-error{
+  margin-top:12px;padding:10px 14px;
+  background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.28);
+  border-radius:var(--r-sm);font-size:12px;color:#fca5a5;text-align:center;
+  display:none;font-family:'JetBrains Mono',monospace;
+}
+.login-error.show{display:block;animation:shake .3s ease;}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+.login-hint{text-align:center;margin-top:10px;font-size:11px;color:rgba(201,168,76,.5);font-family:'JetBrains Mono',monospace;}
+
+/* ═══ APP SHELL ═══ */
+#adminApp{display:none;flex-direction:column;height:100vh;position:relative;z-index:1;}
+#adminApp.visible{display:flex;}
+
+/* Header */
+.adm-header{
+  background:rgba(6,7,9,.88);backdrop-filter:var(--blur);
+  border-bottom:1px solid var(--border);
+  padding:11px 16px;display:flex;align-items:center;justify-content:space-between;
+  flex-shrink:0;z-index:10;
+}
+.adm-hl{display:flex;align-items:center;gap:10px;}
+.adm-logo{
+  width:33px;height:33px;border-radius:9px;flex-shrink:0;
+  background:linear-gradient(135deg,rgba(201,168,76,.25),rgba(201,168,76,.04));
+  border:1px solid rgba(201,168,76,.28);
+  display:flex;align-items:center;justify-content:center;font-size:15px;
+}
+.adm-brand{font-size:14px;font-weight:800;}
+.adm-brand span{color:var(--gold);}
+.adm-sub{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;}
+.adm-hr{display:flex;align-items:center;gap:7px;}
+.icon-btn{
+  background:rgba(255,255,255,.05);border:1px solid var(--border);
+  color:var(--cream);width:33px;height:33px;border-radius:var(--r-sm);
+  cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all .2s;
+}
+.icon-btn:hover{background:rgba(201,168,76,.14);border-color:var(--gold);}
+.logout-btn{
+  background:rgba(239,68,68,.09);border:1px solid rgba(239,68,68,.2);
+  color:#fca5a5;padding:6px 11px;border-radius:var(--r-sm);
+  cursor:pointer;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;transition:all .2s;
+}
+.logout-btn:hover{background:rgba(239,68,68,.2);}
+
+/* Stats row */
+.adm-stats{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:7px;
+  padding:9px 14px;flex-shrink:0;
+}
+.adm-stat{
+  background:var(--surface);backdrop-filter:var(--blur);
+  border:1px solid var(--border);border-radius:var(--r);
+  padding:9px 6px;text-align:center;transition:all .2s;cursor:pointer;
+}
+.adm-stat:hover,.adm-stat.act{border-color:var(--gold);background:rgba(201,168,76,.07);}
+.stat-num{font-family:'JetBrains Mono',monospace;font-size:17px;font-weight:700;}
+.stat-lbl{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-top:2px;}
+
+/* Tabs */
+.adm-tabs{
+  display:flex;border-bottom:1px solid var(--border);
+  flex-shrink:0;overflow-x:auto;scrollbar-width:none;
+  padding:0 12px;background:rgba(6,7,9,.45);
+}
+.adm-tabs::-webkit-scrollbar{display:none;}
+.atab{
+  padding:8px 13px;border:none;background:transparent;
+  color:var(--muted);font-family:'Syne',sans-serif;font-size:11px;font-weight:700;
+  letter-spacing:1px;text-transform:uppercase;cursor:pointer;
+  border-bottom:2px solid transparent;transition:all .2s;white-space:nowrap;
+  display:flex;align-items:center;gap:4px;
+}
+.atab:hover{color:var(--cream);}
+.atab.active{color:var(--gold);border-bottom-color:var(--gold);}
+.tbadge{
+  background:var(--red);color:#fff;
+  font-size:9px;font-weight:700;padding:1px 5px;border-radius:6px;
+  font-family:'JetBrains Mono',monospace;min-width:15px;text-align:center;
+}
+
+/* Content */
+.adm-content{flex:1;overflow-y:auto;padding:13px;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+.adm-content::-webkit-scrollbar{width:3px;}
+.adm-content::-webkit-scrollbar-thumb{background:var(--border);}
+.apanel{display:none;}
+.apanel.active{display:block;}
+
+/* Card */
+.acard{
+  background:var(--surface);backdrop-filter:var(--blur);
+  border:1px solid var(--border);border-radius:var(--r);
+  padding:14px;margin-bottom:10px;
+  animation:cardIn .3s ease;transition:border-color .2s;
+}
+@keyframes cardIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+.acard:hover{border-color:var(--border2);}
+.card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.card-time{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;}
+
+/* Badges */
+.bdg{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.5px;font-family:'JetBrains Mono',monospace;}
+.bdg-g{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.28);color:#4ade80;}
+.bdg-r{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.28);color:#f87171;}
+.bdg-o{background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.28);color:var(--gold);}
+.bdg-b{background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.28);color:#60a5fa;}
+.bdg-p{background:rgba(168,85,247,.1);border:1px solid rgba(168,85,247,.28);color:#c084fc;}
+.bdg-or{background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.28);color:#fb923c;}
+
+/* Data rows */
+.drow{display:flex;align-items:flex-start;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;gap:10px;}
+.drow:last-child{border-bottom:none;padding-bottom:0;}
+.dk{color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:10px;flex-shrink:0;padding-top:1px;}
+.dv{color:var(--cream);text-align:right;word-break:break-all;font-size:12px;}
+.dv.mono{font-family:'JetBrains Mono',monospace;font-size:10px;}
+
+/* Action buttons */
+.aacts{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;}
+.abtn{
+  padding:7px 11px;border-radius:var(--r-sm);border:1px solid var(--border);
+  background:rgba(255,255,255,.04);color:var(--cream);
+  font-family:'Syne',sans-serif;font-size:11px;font-weight:700;letter-spacing:.3px;
+  cursor:pointer;transition:all .2s;flex:1;min-width:65px;text-align:center;
+}
+.abtn:hover{border-color:var(--border2);}
+.abtn.danger{border-color:rgba(239,68,68,.28);color:#f87171;background:rgba(239,68,68,.05);}
+.abtn.danger:hover{background:rgba(239,68,68,.16);}
+.abtn.ok{border-color:rgba(34,197,94,.28);color:#4ade80;background:rgba(34,197,94,.05);}
+.abtn.ok:hover{background:rgba(34,197,94,.16);}
+.abtn.gold{border-color:rgba(201,168,76,.28);color:var(--gold);background:rgba(201,168,76,.05);}
+.abtn.gold:hover{background:rgba(201,168,76,.16);}
+.abtn.blue{border-color:rgba(59,130,246,.28);color:#60a5fa;background:rgba(59,130,246,.05);}
+.abtn.blue:hover{background:rgba(59,130,246,.16);}
+.abtn:disabled{opacity:.35;cursor:not-allowed;}
+
+/* Search bar */
+.sbar{display:flex;gap:7px;margin-bottom:11px;}
+.sbar input{
+  flex:1;padding:9px 12px;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);
+  color:var(--cream);font-family:'JetBrains Mono',monospace;font-size:12px;outline:none;transition:all .2s;
+}
+.sbar input:focus{border-color:var(--gold);}
+.sbar input::placeholder{color:var(--muted);}
+.sbar-btn{padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--muted);cursor:pointer;font-size:13px;transition:all .2s;}
+.sbar-btn:hover{border-color:var(--gold);color:var(--gold);}
+
+/* Empty */
+.empty{text-align:center;padding:34px 16px;}
+.empty .ei{font-size:34px;margin-bottom:9px;opacity:.38;}
+.empty .et{font-size:13px;color:var(--muted);}
+.empty .es{font-size:11px;color:var(--muted);opacity:.55;margin-top:3px;}
+
+/* Section title */
+.stitle{
+  font-size:9px;letter-spacing:4px;text-transform:uppercase;
+  color:var(--muted);font-family:'JetBrains Mono',monospace;
+  margin-bottom:8px;margin-top:4px;display:flex;align-items:center;gap:7px;
+}
+.stitle::after{content:'';flex:1;height:1px;background:var(--border);}
+
+/* Settings */
+.set-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);}
+.set-row:last-child{border-bottom:none;}
+.set-t{font-size:13px;color:var(--cream);font-weight:600;}
+.set-s{font-size:11px;color:var(--muted);margin-top:2px;font-family:'JetBrains Mono',monospace;}
+.toggle{position:relative;width:42px;height:23px;flex-shrink:0;}
+.toggle input{opacity:0;width:0;height:0;}
+.tslider{position:absolute;inset:0;border-radius:12px;background:rgba(255,255,255,.09);cursor:pointer;border:1px solid var(--border);transition:.3s;}
+.tslider::before{content:'';position:absolute;width:15px;height:15px;left:3px;top:3px;border-radius:50%;background:var(--muted);transition:.3s;}
+.toggle input:checked+.tslider{background:rgba(34,197,94,.28);border-color:rgba(34,197,94,.45);}
+.toggle input:checked+.tslider::before{transform:translateX(19px);background:var(--green);}
+
+/* Field input */
+.finput{
+  width:100%;padding:10px 12px;
+  background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:var(--r-sm);
+  color:var(--cream);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none;transition:all .2s;
+}
+.finput:focus{border-color:var(--gold);}
+.finput::placeholder{color:var(--muted);}
+
+/* Dashboard */
+.dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:11px;}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:13px;text-align:center;}
+.kpi-n{font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:700;}
+.kpi-l{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-top:3px;}
+.rev-bar{background:rgba(255,255,255,.05);border-radius:4px;height:5px;margin-top:7px;overflow:hidden;}
+.rev-f{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--gold),var(--gold2));transition:width 1s ease;}
+.afd{display:flex;flex-direction:column;gap:6px;}
+.af-item{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:var(--r-sm);}
+.af-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:4px;}
+.af-text{font-size:12px;line-height:1.45;}
+.af-text strong{color:var(--cream);}
+.af-time{color:var(--muted);font-size:10px;font-family:'JetBrains Mono',monospace;display:block;margin-top:2px;}
+.exp-bar{display:flex;gap:7px;flex-wrap:wrap;}
+.exp-btn{flex:1;min-width:80px;padding:9px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--cream);font-family:'Syne',sans-serif;font-size:11px;font-weight:700;letter-spacing:.3px;cursor:pointer;transition:all .2s;text-align:center;}
+.exp-btn:hover{border-color:var(--gold);color:var(--gold);}
+
+/* ═══ CHAT MANAGER ═══ */
+.chat-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  padding:13px;margin-bottom:9px;cursor:default;transition:border-color .2s;
+}
+.chat-card.pending-dl{border-color:rgba(249,115,22,.35);}
+.chat-card.dl-ok{border-color:rgba(34,197,94,.25);}
+.cc-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;}
+.cc-buyer{display:flex;align-items:center;gap:9px;}
+.cc-av{
+  width:33px;height:33px;border-radius:50%;
+  background:linear-gradient(135deg,rgba(201,168,76,.25),rgba(139,26,26,.25));
+  display:flex;align-items:center;justify-content:center;
+  font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:var(--gold);flex-shrink:0;
+}
+.cc-name{font-size:13px;font-weight:700;color:var(--cream);}
+.cc-phone{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;}
+.cc-preview{font-size:12px;color:var(--muted);margin-bottom:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+/* Download permission toggle */
+.dl-perm-row{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 12px;border-radius:var(--r-sm);
+  background:rgba(249,115,22,.07);border:1px solid rgba(249,115,22,.25);
+  margin-bottom:9px;
+}
+.dl-perm-row.granted{background:rgba(34,197,94,.07);border-color:rgba(34,197,94,.25);}
+.dl-perm-icon{font-size:20px;flex-shrink:0;}
+.dl-perm-text{flex:1;}
+.dl-perm-title{font-size:12px;font-weight:700;color:var(--cream);}
+.dl-perm-sub{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:2px;}
+.dl-perm-btn{
+  padding:7px 13px;border-radius:var(--r-sm);border:none;
+  font-family:'Syne',sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;
+  cursor:pointer;transition:all .2s;white-space:nowrap;flex-shrink:0;
+}
+.dl-perm-btn.grant{background:rgba(34,197,94,.85);color:#000;}
+.dl-perm-btn.grant:hover{background:rgba(34,197,94,1);}
+.dl-perm-btn.revoke{background:rgba(239,68,68,.7);color:#fff;}
+.dl-perm-btn.revoke:hover{background:rgba(239,68,68,.9);}
+
+/* ═══ CHAT FULL VIEW ═══ */
+.chat-fv{
+  position:fixed;inset:0;z-index:800;
+  background:rgba(6,7,9,.99);
+  display:flex;flex-direction:column;
+  transform:translateX(100%);transition:transform .35s cubic-bezier(.2,.8,.2,1);
+}
+.chat-fv.open{transform:translateX(0);}
+.chat-fv-hdr{
+  background:rgba(0,0,0,.55);backdrop-filter:var(--blur);
+  padding:12px 16px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:11px;flex-shrink:0;
+}
+.fv-back{
+  background:rgba(255,255,255,.07);border:1px solid var(--border);
+  color:var(--cream);width:34px;height:34px;border-radius:var(--r-sm);
+  cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:all .2s;
+}
+.fv-back:hover{background:rgba(201,168,76,.18);}
+.fv-info{flex:1;}
+.fv-name{font-size:14px;font-weight:700;color:var(--cream);}
+.fv-sub{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:2px;}
+.fv-enc{font-size:10px;color:var(--green);font-family:'JetBrains Mono',monospace;display:flex;align-items:center;gap:4px;flex-shrink:0;}
+
+/* DL banner inside chat view */
+.fv-dl-banner{
+  margin:10px 14px 0;padding:11px 14px;border-radius:var(--r);
+  display:flex;align-items:center;gap:10px;flex-shrink:0;
+  background:rgba(249,115,22,.08);border:1px solid rgba(249,115,22,.28);
+}
+.fv-dl-banner.ok{background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.28);}
+.fv-dl-t{flex:1;}
+.fv-dl-t strong{display:block;font-size:12px;color:var(--orange);}
+.fv-dl-banner.ok .fv-dl-t strong{color:var(--green);}
+.fv-dl-t span{font-size:11px;color:var(--muted);}
+.fv-dl-btn{
+  padding:8px 13px;border-radius:var(--r-sm);border:none;
+  font-family:'Syne',sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;
+  cursor:pointer;white-space:nowrap;flex-shrink:0;transition:all .2s;
+}
+.fv-dl-btn.grant{background:rgba(34,197,94,.85);color:#000;}
+.fv-dl-btn.grant:hover{background:#22c55e;}
+.fv-dl-btn.revoke{background:rgba(239,68,68,.7);color:#fff;}
+.fv-dl-btn.revoke:hover{background:var(--red);}
+
+/* Messages */
+.fv-msgs{
+  flex:1;overflow-y:auto;padding:14px;
+  display:flex;flex-direction:column;gap:9px;
+  scrollbar-width:thin;scrollbar-color:var(--border) transparent;
+}
+.fv-msgs::-webkit-scrollbar{width:3px;}
+.fv-msgs::-webkit-scrollbar-thumb{background:var(--border);}
+.bubble{max-width:82%;padding:10px 13px;border-radius:12px;font-size:13px;line-height:1.5;}
+.bubble.user{background:rgba(139,26,26,.48);border:1px solid rgba(139,26,26,.28);align-self:flex-end;border-radius:12px 12px 2px 12px;color:var(--cream);}
+.bubble.admin-msg{background:rgba(201,168,76,.12);border:1px solid rgba(201,168,76,.22);align-self:flex-end;border-radius:12px 12px 2px 12px;color:var(--cream);}
+.bubble.bot{background:rgba(255,255,255,.06);border:1px solid var(--border);align-self:flex-start;border-radius:12px 12px 12px 2px;color:var(--cream);}
+.bubble.system{
+  background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.18);
+  align-self:center;text-align:center;font-size:10px;
+  color:rgba(96,165,250,.8);font-family:'JetBrains Mono',monospace;
+  border-radius:6px;max-width:92%;
+}
+.bubble img{max-width:180px;border-radius:7px;display:block;margin-top:5px;}
+.btime{font-size:9px;color:rgba(255,255,255,.28);margin-top:4px;text-align:right;font-family:'JetBrains Mono',monospace;}
+.bubble.admin-msg .btime{color:rgba(201,168,76,.45);}
+.admin-label{font-size:9px;color:var(--gold);font-family:'JetBrains Mono',monospace;text-align:right;margin-bottom:2px;letter-spacing:.5px;}
+
+/* Reply box */
+.fv-reply{
+  padding:10px 14px 14px;border-top:1px solid var(--border);
+  background:rgba(6,7,9,.8);backdrop-filter:var(--blur);flex-shrink:0;
+}
+.fv-enc-notice{font-size:9px;color:var(--muted);font-family:'JetBrains Mono',monospace;text-align:center;padding:4px 0 6px;display:flex;align-items:center;justify-content:center;gap:5px;}
+.fv-reply-row{display:flex;gap:7px;align-items:flex-end;}
+.fv-input{
+  flex:1;padding:10px 12px;min-height:40px;max-height:100px;
+  background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:var(--r-sm);
+  color:var(--cream);font-family:'Syne',sans-serif;font-size:13px;outline:none;
+  transition:border-color .2s;resize:none;
+}
+.fv-input:focus{border-color:var(--gold);}
+.fv-input::placeholder{color:var(--muted);}
+.fv-send{
+  background:var(--gold);color:#000;border:none;
+  width:40px;height:40px;border-radius:var(--r-sm);
+  cursor:pointer;font-size:16px;flex-shrink:0;transition:all .2s;
+  display:flex;align-items:center;justify-content:center;
+}
+.fv-send:hover{background:var(--gold2);}
+
+/* ═══ TOAST ═══ */
+.adm-toast{
+  position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(18px);
+  background:rgba(12,14,20,.97);backdrop-filter:var(--blur);
+  border:1px solid var(--border);color:var(--cream);
+  padding:9px 18px;border-radius:50px;
+  font-size:12px;font-weight:600;letter-spacing:.3px;font-family:'JetBrains Mono',monospace;
+  z-index:9999;opacity:0;transition:all .3s;pointer-events:none;white-space:nowrap;
+  box-shadow:0 8px 30px rgba(0,0,0,.5);
+}
+.adm-toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+/* ═══ BOTTOM SHEET MODAL ═══ */
+.modal-bg{
+  position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(8px);
+  z-index:900;display:flex;align-items:flex-end;justify-content:center;
+  opacity:0;pointer-events:none;transition:opacity .3s;
+}
+.modal-bg.open{opacity:1;pointer-events:all;}
+.modal-box{
+  background:rgba(10,12,18,.98);backdrop-filter:var(--blur);
+  border:1px solid var(--border);border-radius:20px 20px 0 0;
+  width:100%;max-width:480px;max-height:84vh;overflow-y:auto;
+  transform:translateY(48px);transition:transform .35s cubic-bezier(.2,.8,.2,1);
+  scrollbar-width:thin;
+}
+.modal-bg.open .modal-box{transform:translateY(0);}
+.modal-handle{width:36px;height:4px;background:rgba(255,255,255,.16);border-radius:2px;margin:11px auto 0;}
+.modal-hdr{padding:13px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:rgba(10,12,18,.98);z-index:2;}
+.modal-hdr h3{font-size:13px;font-weight:700;letter-spacing:2px;color:var(--gold);font-family:'JetBrains Mono',monospace;}
+.modal-close-btn{background:rgba(255,255,255,.07);border:1px solid var(--border);color:var(--cream);width:27px;height:27px;border-radius:50%;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;}
+.modal-body{padding:17px;}
+
+/* ═══ CONFIRM DIALOG ═══ */
+.confirm-bg{
+  position:fixed;inset:0;z-index:1100;
+  background:rgba(0,0,0,.72);backdrop-filter:blur(6px);
+  display:flex;align-items:center;justify-content:center;padding:22px;
+  opacity:0;pointer-events:none;transition:opacity .25s;
+}
+.confirm-bg.open{opacity:1;pointer-events:all;}
+.confirm-box{
+  background:rgba(10,12,18,.99);backdrop-filter:var(--blur);
+  border:1px solid rgba(239,68,68,.28);border-radius:16px;
+  width:100%;max-width:300px;padding:22px;text-align:center;
+  transform:scale(.94);transition:transform .25s;
+}
+.confirm-bg.open .confirm-box{transform:scale(1);}
+.confirm-box .cicon{font-size:34px;margin-bottom:9px;}
+.confirm-box h4{font-size:14px;font-weight:700;color:var(--cream);margin-bottom:5px;}
+.confirm-box p{font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.55;}
+.confirm-btns{display:flex;gap:9px;}
+.cyes{flex:1;padding:10px;background:rgba(239,68,68,.8);color:#fff;border:none;border-radius:var(--r-sm);font-family:'Syne',sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:background .2s;}
+.cyes:hover{background:var(--red);}
+.cno{flex:1;padding:10px;background:rgba(255,255,255,.06);color:var(--cream);border:1px solid var(--border);border-radius:var(--r-sm);font-family:'Syne',sans-serif;font-size:13px;font-weight:700;cursor:pointer;}
+
+@media(max-width:380px){
+  .stat-num{font-size:15px;}
+  .dash-grid{grid-template-columns:1fr;}
+}
+</style>
+  <script src="db.js"></script>
+</head>
+<body>
+
+<!-- ═══════════ LOGIN ═══════════ -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="licon">🛡️</div>
+      <h1>Painel Admin</h1>
+      <p>Ntila Marketing · Sistema</p>
+    </div>
+    <div class="lfield">
+      <label>Utilizador</label>
+      <input type="text" id="loginUser" placeholder="admin" autocomplete="username">
+    </div>
+    <div class="lfield">
+      <label>Senha</label>
+      <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="login-btn" onclick="doLogin()">🔓 Entrar no Sistema</button>
+    <div class="login-error" id="loginError"></div>
+    <div class="login-hint" id="loginHint">
+      🔒 Acesso restrito ao administrador
+    </div>
+    <button onclick="resetCreds()" style="
+      margin-top:10px;width:100%;padding:9px;
+      background:transparent;border:1px dashed rgba(239,68,68,.3);
+      color:rgba(239,68,68,.55);border-radius:var(--r-sm);
+      font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:1px;
+      cursor:pointer;transition:all .2s;
+    " onmouseover="this.style.borderColor='rgba(239,68,68,.6)';this.style.color='rgba(239,68,68,.9)'"
+       onmouseout="this.style.borderColor='rgba(239,68,68,.3)';this.style.color='rgba(239,68,68,.55)'">
+      🔄 Repor credenciais padrão (se esqueceu a senha)
+    </button>
+  </div>
+</div>
+
+<!-- ═══════════ ADMIN APP ═══════════ -->
+<div id="adminApp">
+
+  <div class="adm-header">
+    <div class="adm-hl">
+      <div class="adm-logo">⚡</div>
+      <div>
+        <div class="adm-brand">Ntila <span>Admin</span></div>
+        <div class="adm-sub" id="hdr-user">admin</div>
+      </div>
+    </div>
+    <div class="adm-hr">
+      <button class="icon-btn" onclick="refreshAll()" title="Actualizar">🔄</button>
+      <button class="logout-btn" onclick="doLogout()">Sair</button>
+    </div>
+  </div>
+
+  <div class="adm-stats">
+    <div class="adm-stat" onclick="switchTab('receitas')">
+      <div class="stat-num" id="sn-mzn" style="color:var(--gold)">0</div>
+      <div class="stat-lbl">MZN</div>
+    </div>
+    <div class="adm-stat" onclick="switchTab('chat')">
+      <div class="stat-num" id="sn-chats" style="color:var(--blue)">0</div>
+      <div class="stat-lbl">Chats</div>
+    </div>
+    <div class="adm-stat" onclick="switchTab('fraude')">
+      <div class="stat-num" id="sn-fraud" style="color:var(--red)">0</div>
+      <div class="stat-lbl">Fraudes</div>
+    </div>
+  </div>
+
+  <div class="adm-tabs">
+    <button class="atab active" onclick="switchTab('dashboard')" data-tab="dashboard">📊 Dash</button>
+    <button class="atab" onclick="switchTab('receitas')" data-tab="receitas">💰 Receitas <span class="tbadge" id="tb-r">0</span></button>
+    <button class="atab" onclick="switchTab('chat')" data-tab="chat">💬 Chat <span class="tbadge" id="tb-c" style="background:var(--blue)">0</span></button>
+    <button class="atab" onclick="switchTab('comentarios')" data-tab="comentarios">🗨 Coment. <span class="tbadge" id="tb-cm">0</span></button>
+    <button class="atab" onclick="switchTab('utilizadores')" data-tab="utilizadores">👥 IPs</button>
+    <button class="atab" onclick="switchTab('fraude')" data-tab="fraude">🚫 Fraude <span class="tbadge" id="tb-f">0</span></button>
+    <button class="atab" onclick="switchTab('configuracoes')" data-tab="configuracoes">⚙️ Config</button>
+  </div>
+
+  <div class="adm-content">
+
+    <!-- DASHBOARD -->
+    <div class="apanel active" id="panel-dashboard">
+      <div class="dash-grid">
+        <div class="kpi" style="grid-column:1/-1">
+          <div class="kpi-n" id="kpi-r" style="color:var(--gold)">0 MZN</div>
+          <div class="kpi-l">Receita Total</div>
+          <div class="rev-bar"><div class="rev-f" id="rev-f" style="width:0%"></div></div>
+        </div>
+        <div class="kpi"><div class="kpi-n" id="kpi-v" style="color:var(--green)">0</div><div class="kpi-l">Vendas</div></div>
+        <div class="kpi"><div class="kpi-n" id="kpi-l" style="color:var(--red)">0</div><div class="kpi-l">Gostos ❤️</div></div>
+        <div class="kpi"><div class="kpi-n" id="kpi-cm" style="color:var(--blue)">0</div><div class="kpi-l">Comentários</div></div>
+        <div class="kpi"><div class="kpi-n" id="kpi-pd" style="color:var(--orange)">0</div><div class="kpi-l">Downloads Pendentes</div></div>
+      </div>
+      <div class="stitle">Actividade Recente</div>
+      <div class="afd" id="afd"></div>
+      <div class="stitle" style="margin-top:13px;">Exportar Dados</div>
+      <div class="exp-bar">
+        <button class="exp-btn" onclick="exportAll()">📦 Tudo</button>
+        <button class="exp-btn" onclick="exportReceipts()">🧾 Recibos</button>
+        <button class="exp-btn" onclick="exportCSV()">📊 CSV</button>
+      </div>
+    </div>
+
+    <!-- RECEITAS -->
+    <div class="apanel" id="panel-receitas">
+      <div class="sbar">
+        <input type="text" id="q-r" placeholder="Buscar nome, telefone, ID..." oninput="renderReceitas()">
+        <button class="sbar-btn" onclick="exportReceipts()" title="Exportar">⬇</button>
+      </div>
+      <div class="stitle">Transacções & Recibos</div>
+      <div id="list-r"></div>
+    </div>
+
+    <!-- CHAT -->
+    <div class="apanel" id="panel-chat">
+      <div class="stitle">Sessões de Venda — Controlo de Download</div>
+      <div id="list-chat"></div>
+    </div>
+
+    <!-- COMENTÁRIOS -->
+    <div class="apanel" id="panel-comentarios">
+      <div class="sbar">
+        <input type="text" id="q-cm" placeholder="Buscar comentário ou email..." oninput="renderComments()">
+      </div>
+      <div class="stitle">Todos os Comentários</div>
+      <div id="list-cm"></div>
+    </div>
+
+    <!-- IPs -->
+    <div class="apanel" id="panel-utilizadores">
+      <div class="sbar">
+        <input type="text" id="q-ip" placeholder="Buscar endereço IP..." oninput="renderIPs()">
+        <button class="sbar-btn" onclick="renderIPs('banned')" title="Só banidos">🚫</button>
+      </div>
+      <div class="stitle">Endereços IP Registados</div>
+      <div id="list-ip"></div>
+    </div>
+
+    <!-- FRAUDE -->
+    <div class="apanel" id="panel-fraude">
+      <div class="stitle">Tentativas de Fraude Detectadas</div>
+      <div id="list-fraud"></div>
+    </div>
+
+    <!-- CONFIG -->
+    <div class="apanel" id="panel-configuracoes">
+
+      <div class="stitle">Nome de Utilizador</div>
+      <div class="acard">
+        <div class="set-row">
+          <div><div class="set-t">Nome actual</div><div class="set-s" id="conf-user-disp">admin</div></div>
+          <button class="abtn gold" onclick="toggleEl('edit-user-form')" style="flex:0;white-space:nowrap;">✏️ Editar</button>
+        </div>
+        <div id="edit-user-form" style="display:none;padding-top:11px;">
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <input class="finput" type="text" id="inp-new-user" placeholder="Novo nome de utilizador">
+            <input class="finput" type="password" id="inp-pass-confirm-user" placeholder="🔑 Senha actual para confirmar">
+            <button class="abtn ok" onclick="changeUsername()">✅ Guardar Nome</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="stitle">Alterar Senha</div>
+      <div class="acard">
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <input class="finput" type="password" id="inp-old-pass" placeholder="🔑 Senha actual (obrigatório)">
+          <input class="finput" type="password" id="inp-new-pass1" placeholder="🔒 Nova senha (mín. 8 caracteres)">
+          <input class="finput" type="password" id="inp-new-pass2" placeholder="🔒 Confirmar nova senha">
+          <button class="abtn ok" style="margin-top:3px;" onclick="changePassword()">🔐 Actualizar Senha</button>
+        </div>
+      </div>
+
+      <div class="stitle">Preferências</div>
+      <div class="acard">
+        <div class="set-row">
+          <div><div class="set-t">Auto-Actualização</div><div class="set-s">Refrescar a cada 30 segundos</div></div>
+          <label class="toggle">
+            <input type="checkbox" id="auto-ref-toggle" onchange="toggleAutoRefresh(this.checked)">
+            <span class="tslider"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="stitle">Sistema</div>
+      <div class="acard">
+        <div class="set-row"><div><div class="set-t">M-PESA</div><div class="set-s">852260828 · Antônio Ntila</div></div><span class="bdg bdg-g">✓ Activo</span></div>
+        <div class="set-row"><div><div class="set-t">Preço do Livro</div><div class="set-s">150 MZN</div></div><span class="bdg bdg-o">MZN</span></div>
+        <div class="set-row"><div><div class="set-t">Encriptação E2E</div><div class="set-s">AES-256-GCM (Web Crypto API)</div></div><span class="bdg bdg-g">🔒 E2E</span></div>
+        <div class="set-row"><div><div class="set-t">Versão</div><div class="set-s">SGM Admin v3.0</div></div><span class="bdg bdg-b">v3.0</span></div>
+      </div>
+
+      <div class="stitle" style="color:var(--red)">Zona Perigosa</div>
+      <div class="acard" style="border-color:rgba(239,68,68,.18);">
+        <button class="abtn danger" style="width:100%;margin-bottom:7px;" onclick="conf('Desbanir todos os IPs?','Todos os bloqueios serao removidos.',clearBanned)">🔓 Desbanir Todos os IPs</button>
+        <button class="abtn danger" style="width:100%;margin-bottom:7px;" onclick="conf('Limpar registos de fraude?','Os registos de fraude serao eliminados.',clearFraud)">🗑 Limpar Fraudes</button>
+        <button class="abtn danger" style="width:100%;" onclick="conf('APAGAR TODOS OS DADOS?','Irreversivel! Todos os dados serao eliminados permanentemente.',clearAllData)">⚠️ Limpar TODOS os Dados</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════ CHAT FULL VIEW ═══════════ -->
+<div class="chat-fv" id="chatFV">
+  <div class="chat-fv-hdr">
+    <button class="fv-back" onclick="closeChatFV()">‹</button>
+    <div class="fv-info">
+      <div class="fv-name" id="fv-name">—</div>
+      <div class="fv-sub" id="fv-sub">—</div>
+    </div>
+    <div class="fv-enc">🔒 AES-256</div>
+  </div>
+  <div class="fv-dl-banner" id="fv-dl-banner">
+    <span class="dl-perm-icon">📥</span>
+    <div class="fv-dl-t">
+      <strong id="fv-dl-title">⏳ Download Pendente</strong>
+      <span id="fv-dl-sub">Verificar comprovativo e liberar o download.</span>
+    </div>
+    <button class="fv-dl-btn grant" id="fv-dl-btn" onclick="toggleFVDownload()">✅ Liberar</button>
+  </div>
+  <div class="fv-msgs" id="fv-msgs"></div>
+  <div class="fv-reply">
+    <div class="fv-enc-notice">🔒 Mensagens encriptadas ponta-a-ponta (AES-256-GCM)</div>
+    <div class="fv-reply-row">
+      <textarea class="fv-input" id="fv-reply-inp" placeholder="Escreva a sua resposta ao cliente..." rows="1"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAdminMsg();}"
+        oninput="autoResize(this)"></textarea>
+      <button class="fv-send" onclick="sendAdminMsg()">➤</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-bg" id="modalBg">
+  <div class="modal-box">
+    <div class="modal-handle"></div>
+    <div class="modal-hdr">
+      <h3 id="modal-title">Detalhes</h3>
+      <button class="modal-close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<!-- CONFIRM -->
+<div class="confirm-bg" id="confBg">
+  <div class="confirm-box">
+    <div class="cicon">⚠️</div>
+    <h4 id="conf-title">Confirmar</h4>
+    <p id="conf-msg">Tem a certeza?</p>
+    <div class="confirm-btns">
+      <button class="cyes" id="conf-yes">Confirmar</button>
+      <button class="cno" onclick="closeConf()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<div class="adm-toast" id="toast"></div>
+
+<script>
+'use strict';
+
+// ══════════════════════════════════════════════════
+//   AES-256-GCM END-TO-END ENCRYPTION (Web Crypto)
+// ══════════════════════════════════════════════════
+const E2E = {
+  _key: null,
+  async key() {
+    if (this._key) return this._key;
+    const stored = localStorage.getItem('adm_e2e_k');
+    if (stored) {
+      const raw = Uint8Array.from(atob(stored), c => c.charCodeAt(0));
+      this._key = await crypto.subtle.importKey('raw', raw, {name:'AES-GCM'}, true, ['encrypt','decrypt']);
+    } else {
+      this._key = await crypto.subtle.generateKey({name:'AES-GCM',length:256}, true, ['encrypt','decrypt']);
+      const raw = await crypto.subtle.exportKey('raw', this._key);
+      localStorage.setItem('adm_e2e_k', btoa(String.fromCharCode(...new Uint8Array(raw))));
+    }
+    return this._key;
+  },
+  async encrypt(text) {
+    try {
+      const k = await this.key();
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const ct = await crypto.subtle.encrypt({name:'AES-GCM',iv}, k, new TextEncoder().encode(text));
+      const out = new Uint8Array(12 + ct.byteLength);
+      out.set(iv); out.set(new Uint8Array(ct), 12);
+      return btoa(String.fromCharCode(...out));
+    } catch { return btoa(unescape(encodeURIComponent(text))); }
+  },
+  async decrypt(b64) {
+    try {
+      const k = await this.key();
+      const buf = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      const plain = await crypto.subtle.decrypt({name:'AES-GCM',iv:buf.slice(0,12)}, k, buf.slice(12));
+      return new TextDecoder().decode(plain);
+    } catch { try { return decodeURIComponent(escape(atob(b64))); } catch { return b64; } }
+  }
+};
+
+// XOR legacy (ler chats antigos do site principal)
+function xorDec(enc, key='SGM2025') {
+  try {
+    const s = decodeURIComponent(escape(atob(enc)));
+    let r=''; for(let i=0;i<s.length;i++) r+=String.fromCharCode(s.charCodeAt(i)^key.charCodeAt(i%key.length));
+    return r;
+  } catch { return '[ENCRIPTADO]'; }
+}
+
+// ══════════════════════════════════════════════════
+//   CREDENCIAIS
+// ══════════════════════════════════════════════════
+const DEF = {user:'admin', pass:'Ntila@2025#Seguro'}; // Altere no primeiro login
+let SES = {ok:false, tries:0, max:5, lockUntil:0};
+let arInt = null;
+let curSession = null;
+
+function creds() {
+  try {
+    const raw = localStorage.getItem('adm_creds');
+    if(!raw) return {...DEF};
+    const parsed = JSON.parse(raw);
+    // Validar que tem user e pass válidos
+    if(typeof parsed.user === 'string' && parsed.user.length >= 1 &&
+       typeof parsed.pass === 'string' && parsed.pass.length >= 1) {
+      return parsed;
+    }
+    return {...DEF};
+  } catch(e) {
+    localStorage.removeItem('adm_creds'); // limpar dados corrompidos
+    return {...DEF};
+  }
+}
+function saveCreds(c) {
+  try { localStorage.setItem('adm_creds', JSON.stringify(c)); } catch(e) {}
+}
+
+// ══════════════════════════════════════════════════
+//   LOGIN / LOGOUT
+// ══════════════════════════════════════════════════
+function doLogin() {
+  const now = Date.now();
+
+  // Verificar bloqueio
+  if(SES.lockUntil > now) {
+    const sec = Math.ceil((SES.lockUntil - now) / 1000);
+    showErr('🔒 Bloqueado por ' + sec + 's. Demasiadas tentativas.');
+    return;
+  }
+
+  const u = (document.getElementById('loginUser').value || '').trim();
+  const p = (document.getElementById('loginPass').value || '');
+
+  if(!u || !p) { showErr('⚠️ Preencha o utilizador e a senha.'); return; }
+
+  const c = creds();
+
+  // Comparação directa — sem transformações
+  if(u === c.user && p === c.pass) {
+    SES.ok = true;
+    SES.tries = 0;
+
+    const ls = document.getElementById('loginScreen');
+    ls.style.transition = 'opacity .35s, transform .35s';
+    ls.style.opacity = '0';
+    ls.style.transform = 'scale(1.05)';
+
+    setTimeout(function() {
+      ls.style.display = 'none';
+      document.getElementById('adminApp').classList.add('visible');
+      try { document.getElementById('hdr-user').textContent = c.user; } catch(e){}
+      try { document.getElementById('conf-user-disp').textContent = c.user; } catch(e){}
+      refreshAll();
+    }, 340);
+
+  } else {
+    SES.tries++;
+    const rem = SES.max - SES.tries;
+    if(SES.tries >= SES.max) {
+      SES.lockUntil = Date.now() + 60000;
+      showErr('🔒 Muitas tentativas! Bloqueado por 60 segundos.');
+    } else {
+      showErr('❌ Utilizador ou senha incorrectos. (' + rem + ' tentativa(s) restante(s))');
+    }
+  }
+}
+
+function showErr(msg) {
+  const el = document.getElementById('loginError');
+  if(!el) return;
+  el.textContent = msg;
+  el.style.display = 'none';
+  // forçar reflow para reiniciar animação
+  void el.offsetWidth;
+  el.style.display = 'block';
+  el.classList.remove('show');
+  setTimeout(function(){ el.classList.add('show'); }, 10);
+}
+function doLogout() {
+  SES.ok=false; if(arInt) clearInterval(arInt); closeChatFV();
+  document.getElementById('adminApp').classList.remove('visible');
+  const ls=document.getElementById('loginScreen');
+  ls.style.display='flex'; ls.style.opacity='1'; ls.style.transform='none';
+  document.getElementById('loginPass').value='';
+}
+
+// ══════════════════════════════════════════════════
+//   ALTERAR NOME (requer senha actual)
+// ══════════════════════════════════════════════════
+function changeUsername() {
+  const nu = document.getElementById('inp-new-user').value.trim();
+  const pc = document.getElementById('inp-pass-confirm-user').value;
+  const c  = creds();
+  if(!nu||nu.length<3) { toast('⚠️ Nome muito curto (mín. 3 caracteres)'); return; }
+  if(pc !== c.pass)    { toast('❌ Senha actual incorrecta!'); return; }
+  c.user = nu; saveCreds(c);
+  document.getElementById('hdr-user').textContent=nu;
+  document.getElementById('conf-user-disp').textContent=nu;
+  document.getElementById('inp-new-user').value='';
+  document.getElementById('inp-pass-confirm-user').value='';
+  toggleEl('edit-user-form');
+  toast('✅ Nome de utilizador actualizado!');
+}
+
+// ══════════════════════════════════════════════════
+//   ALTERAR SENHA (requer senha antiga)
+// ══════════════════════════════════════════════════
+function changePassword() {
+  const op = document.getElementById('inp-old-pass').value;
+  const p1 = document.getElementById('inp-new-pass1').value;
+  const p2 = document.getElementById('inp-new-pass2').value;
+  const c  = creds();
+  if(!op)              { toast('⚠️ Introduza a senha actual'); return; }
+  if(op !== c.pass)    { toast('❌ Senha actual incorrecta!'); return; }
+  if(!p1||p1.length<8){ toast('⚠️ Nova senha muito curta (mín. 8 caracteres)'); return; }
+  if(p1 !== p2)        { toast('⚠️ As novas senhas não coincidem'); return; }
+  if(p1 === op)        { toast('⚠️ A nova senha é igual à actual'); return; }
+  c.pass = p1; saveCreds(c);
+  ['inp-old-pass','inp-new-pass1','inp-new-pass2'].forEach(id=>document.getElementById(id).value='');
+  toast('🔐 Senha alterada com sucesso!');
+}
+
+// ══════════════════════════════════════════════════
+//   BASE DE DADOS
+// ══════════════════════════════════════════════════
+const DB = {
+  get: k => { try{return JSON.parse(localStorage.getItem(k)||'[]');}catch{return[];} },
+  set: (k,v) => localStorage.setItem(k, JSON.stringify(v)),
+  receipts()     { return this.get('sgm_receipts'); },
+  saveR(d)       { this.set('sgm_receipts',d); },
+  comments()     { return this.get('sgm_comments'); },
+  saveCm(d)      { this.set('sgm_comments',d); },
+  ips()          { return this.get('sgm_ip_db'); },
+  saveIPs(d)     { this.set('sgm_ip_db',d); },
+  txs()          { return this.get('sgm_txs'); },
+  saveTxs(d)     { this.set('sgm_txs',d); },
+  downloads()    { return this.get('sgm_downloads'); },
+  likes()        { return parseInt(localStorage.getItem('sgm_likes')||'0'); },
+
+  // Download permissions (admin controla)
+  dlPerms()      { try{return JSON.parse(localStorage.getItem('adm_dl_perms')||'{}');}catch{return{};} },
+  setDLPerm(sid,granted) {
+    const p=this.dlPerms(); p[sid]={granted,at:granted?new Date().toISOString():null};
+    localStorage.setItem('adm_dl_perms',JSON.stringify(p));
+    // Notificar site principal
+    localStorage.setItem('sgm_dl_perm_change',JSON.stringify({sid,granted,ts:Date.now()}));
+  },
+  hasDL(sid)     { return this.dlPerms()[sid]?.granted===true; },
+
+  // Chat sessions (ler do site principal)
+  chatSessions() {
+    return Object.keys(localStorage)
+      .filter(k=>k.startsWith('sgm_chat_')&&!k.includes('_meta_'))
+      .map(k=>{
+        const id=k.replace('sgm_chat_','');
+        let msgs=[]; try{const r=localStorage.getItem(k);msgs=r?JSON.parse(xorDec(r)):[];}catch{}
+        const meta=this.chatMeta(id);
+        return {id,msgs,...meta};
+      })
+      .sort((a,b)=>new Date(b.lastActivity||0)-new Date(a.lastActivity||0));
+  },
+  chatMeta(id)   { try{return JSON.parse(localStorage.getItem('sgm_chat_meta_'+id)||'{}');}catch{return{};} },
+  saveMeta(id,m) { localStorage.setItem('sgm_chat_meta_'+id,JSON.stringify(m)); },
+
+  // Admin messages — AES-256-GCM encrypted
+  adminMsgs(sid) { try{return JSON.parse(localStorage.getItem('adm_chat_'+sid)||'[]');}catch{return[];} },
+  async addAdminMsg(sid, text) {
+    const msgs=this.adminMsgs(sid);
+    const enc=await E2E.encrypt(text);
+    const m={id:Date.now(),type:'admin',enc,preview:text.slice(0,40),time:new Date().toISOString()};
+    msgs.push(m); localStorage.setItem('adm_chat_'+sid,JSON.stringify(msgs));
+    return m;
+  },
+  async adminMsgsDecrypted(sid) {
+    const raw=this.adminMsgs(sid); const out=[];
+    for(const m of raw){ const txt=await E2E.decrypt(m.enc); out.push({...m,text:txt}); }
+    return out;
+  }
+};
+
+// ══════════════════════════════════════════════════
+//   REFRESH
+// ══════════════════════════════════════════════════
+function refreshAll() {
+  updateStats(); renderDash(); renderReceitas(); renderChatList();
+  renderComments(); renderIPs(); renderFraud();
+}
+function updateStats() {
+  const rs=DB.receipts(), txs=DB.txs(), sessions=DB.chatSessions();
+  const frauds=txs.filter(t=>t.type==='fraud_attempt').length;
+  const pending=sessions.filter(s=>!DB.hasDL(s.id)).length;
+  const rev=rs.length*150;
+
+  document.getElementById('sn-mzn').textContent=rev;
+  document.getElementById('sn-chats').textContent=sessions.length;
+  document.getElementById('sn-fraud').textContent=frauds;
+  document.getElementById('tb-r').textContent=rs.length;
+  document.getElementById('tb-c').textContent=sessions.length;
+  document.getElementById('tb-cm').textContent=DB.comments().length;
+  document.getElementById('tb-f').textContent=frauds;
+  document.getElementById('kpi-r').textContent=rev+' MZN';
+  document.getElementById('kpi-v').textContent=rs.length;
+  document.getElementById('kpi-l').textContent=DB.likes();
+  document.getElementById('kpi-cm').textContent=DB.comments().length;
+  document.getElementById('kpi-pd').textContent=pending;
+  document.getElementById('rev-f').style.width=Math.min(rev/5000*100,100)+'%';
+}
+
+// ══════════════════════════════════════════════════
+//   DASHBOARD
+// ══════════════════════════════════════════════════
+function renderDash() {
+  const el=document.getElementById('afd');
+  let items=[];
+  DB.receipts().forEach(r=>items.push({c:'var(--green)',t:r.generatedAt,txt:`<strong>${r.buyer||'—'}</strong> comprou · <span style="color:var(--gold)">${r.amount||'150 MZN'}</span>`}));
+  DB.comments().forEach(c=>items.push({c:'var(--blue)',t:'',txt:`<strong>${c.emailDisplay||'—'}</strong> comentou: "${(c.text||'').slice(0,30)}..."`}));
+  DB.txs().filter(t=>t.type==='fraud_attempt').forEach(t=>items.push({c:'var(--red)',t:t.timestamp,txt:`⚠️ Fraude: <strong>${t.buyerName||'—'}</strong>`}));
+  DB.chatSessions().forEach(s=>items.push({c:'var(--purple)',t:s.lastActivity,txt:`💬 Chat de <strong>${s.buyerName||'Comprador'}</strong> · ${s.msgs.length} msgs`}));
+  items.sort((a,b)=>new Date(b.t||0)-new Date(a.t||0));
+  items=items.slice(0,10);
+  if(!items.length){el.innerHTML=`<div class="empty"><div class="ei">📭</div><div class="et">Sem actividade ainda</div></div>`;return;}
+  el.innerHTML=items.map(i=>`<div class="af-item"><div class="af-dot" style="background:${i.c}"></div><div class="af-text">${i.txt}<span class="af-time">${fmt(i.t)}</span></div></div>`).join('');
+}
+
+// ══════════════════════════════════════════════════
+//   RECEITAS — DELETE FUNCIONAL
+// ══════════════════════════════════════════════════
+function renderReceitas() {
+  var q = (document.getElementById('q-r') ? document.getElementById('q-r').value : '').toLowerCase();
+  var rs = DB.receipts();
+  if(q) rs = rs.filter(function(r){ return (r.buyer||'').toLowerCase().indexOf(q)!==-1 || (r.phone||'').indexOf(q)!==-1 || (r.id||'').toLowerCase().indexOf(q)!==-1; });
+  var el = document.getElementById('list-r');
+  if(!rs.length){ el.innerHTML='<div class="empty"><div class="ei">💸</div><div class="et">Nenhuma venda encontrada</div></div>'; return; }
+  var html = '';
+  for(var i=0; i<rs.length; i++){
+    var r = rs[i];
+    var methodBadge = r.method==='MPESA' ? 'bdg-r' : 'bdg-b';
+    html += '<div class="acard">'
+      + '<div class="card-head"><span class="bdg bdg-g">✅ PAGO</span><span class="card-time">' + fmt(r.generatedAt) + '</span></div>'
+      + '<div class="drow"><span class="dk">Comprador</span><span class="dv">' + (r.buyer||'—') + '</span></div>'
+      + '<div class="drow"><span class="dk">Telefone</span><span class="dv mono">' + (r.phone||'—') + '</span></div>'
+      + '<div class="drow"><span class="dk">Metodo</span><span class="dv"><span class="bdg ' + methodBadge + '">' + (r.method||'—') + '</span></span></div>'
+      + '<div class="drow"><span class="dk">Valor</span><span class="dv mono" style="color:var(--gold);font-weight:700;">' + (r.amount||'150 MZN') + '</span></div>'
+      + '<div class="drow"><span class="dk">ID</span><span class="dv mono" style="font-size:10px;">' + (r.id||'—') + '</span></div>'
+      + '<div class="aacts">'
+      + '<button class="abtn gold" onclick="showReceiptModal(' + i + ')">🧾 Ver</button>'
+      + '<button class="abtn ok" onclick="dlReceipt(' + i + ')">⬇ Baixar</button>'
+      + '<button class="abtn danger" onclick="delReceiptConfirm(' + i + ')">🗑 Apagar</button>'
+      + '</div></div>';
+  }
+  el.innerHTML = html;
+}
+function showReceiptModal(i) {
+  const r=DB.receipts()[i]; if(!r) return;
+  openModal(`🧾 ${r.id||'Recibo'}`,`
+    <div class="drow"><span class="dk">ID</span><span class="dv mono">${r.id||'—'}</span></div>
+    <div class="drow"><span class="dk">Comprador</span><span class="dv">${r.buyer||'—'}</span></div>
+    <div class="drow"><span class="dk">Telefone</span><span class="dv mono">${r.phone||'—'}</span></div>
+    <div class="drow"><span class="dk">Método</span><span class="dv">${r.method||'—'}</span></div>
+    <div class="drow"><span class="dk">Valor</span><span class="dv" style="color:var(--gold);font-weight:700;">${r.amount||'150 MZN'}</span></div>
+    <div class="drow"><span class="dk">Data</span><span class="dv">${r.date||'—'} ${r.time||''}</span></div>
+    <div class="drow"><span class="dk">Hash</span><span class="dv mono" style="font-size:9px;">${r.hash||'—'}</span></div>
+    <div class="drow"><span class="dk">Status</span><span class="dv"><span class="bdg bdg-g">${r.status||'VERIFICADO'}</span></span></div>
+    ${r.proofDataUrl?`<div style="margin-top:11px;"><div class="stitle" style="margin-bottom:6px;">Comprovativo</div><img src="${r.proofDataUrl}" style="width:100%;border-radius:var(--r-sm);border:1px solid var(--border);" onerror="this.style.display='none'"></div>`:''}
+    <div style="display:flex;gap:7px;margin-top:13px;">
+      <button class="abtn ok" style="flex:1;" onclick="dlReceipt(${i});closeModal()">⬇ Baixar</button>
+      <button class="abtn danger" style="flex:1;" onclick="closeModal();delReceiptConfirm(${i})">🗑 Apagar</button>
+    </div>`);
+}
+function delReceipt(i) {
+  const db=DB.receipts(); db.splice(i,1); DB.saveR(db);
+  renderReceitas(); updateStats(); toast('🗑 Recibo apagado');
+}
+function dlReceipt(i) {
+  const r=DB.receipts()[i]; if(!r) return;
+  dlText(`RECIBO NTILA MARKETING\n${'='.repeat(38)}\nID: ${r.id}\nData: ${r.date} ${r.time}\nComprador: ${r.buyer}\nTelefone: ${r.phone}\nMétodo: ${r.method}\nValor: ${r.amount}\nStatus: ${r.status}\nHash: ${r.hash}`,`recibo_${r.id}.txt`);
+  toast('⬇ Recibo baixado');
+}
+
+// ══════════════════════════════════════════════════
+//   CHAT — GESTÃO MANUAL + PERMISSÃO DOWNLOAD
+// ══════════════════════════════════════════════════
+function renderChatList() {
+  var sessions = DB.chatSessions();
+  var el = document.getElementById('list-chat');
+  if(!sessions.length){ el.innerHTML='<div class="empty"><div class="ei">💬</div><div class="et">Nenhuma sessao de chat</div><div class="es">Os chats aparecem aqui apos compras iniciadas</div></div>'; return; }
+  var html = '';
+  for(var i=0; i<sessions.length; i++){
+    var s = sessions[i];
+    var granted = DB.hasDL(s.id);
+    var lastMsg = s.msgs.length ? s.msgs[s.msgs.length-1] : null;
+    var preview = lastMsg ? ((lastMsg.content||lastMsg.preview||lastMsg.text||'Sem mensagens').slice(0,48)) : 'Sem mensagens';
+    var initial = (s.buyerName||'?')[0].toUpperCase();
+    var dlStatus = granted ? '<span class="bdg bdg-g">✅ Download OK</span>' : '<span class="bdg bdg-or">⏳ Pendente</span>';
+    var dlRowClass = granted ? 'dl-perm-row granted' : 'dl-perm-row';
+    var dlIcon = granted ? '✅' : '📥';
+    var dlTitle = granted ? 'Download Liberado' : 'Download Pendente';
+    var dlSub = granted ? 'Cliente pode descarregar o livro' : 'Aguarda confirmacao do admin';
+    var dlBtnClass = granted ? 'dl-perm-btn revoke' : 'dl-perm-btn grant';
+    var dlBtnText = granted ? '🔒 Revogar' : '✅ Liberar';
+    var cardClass = granted ? 'chat-card dl-ok' : 'chat-card pending-dl';
+    html += '<div class="' + cardClass + '">'
+      + '<div class="cc-head">'
+      + '<div class="cc-buyer">'
+      + '<div class="cc-av">' + initial + '</div>'
+      + '<div><div class="cc-name">' + (s.buyerName||'Comprador') + '</div>'
+      + '<div class="cc-phone">' + (s.buyerPhone||s.id.slice(0,16)) + '</div></div>'
+      + '</div>'
+      + '<div style="text-align:right">' + dlStatus + '<div class="card-time" style="margin-top:4px;">' + fmt(s.lastActivity) + '</div></div>'
+      + '</div>'
+      + '<div class="cc-preview">💬 ' + preview + '</div>'
+      + '<div class="' + dlRowClass + '">'
+      + '<span class="dl-perm-icon">' + dlIcon + '</span>'
+      + '<div class="dl-perm-text"><div class="dl-perm-title">' + dlTitle + '</div><div class="dl-perm-sub">' + dlSub + '</div></div>'
+      + '<button class="' + dlBtnClass + '" data-sid="' + s.id + '" data-granted="' + granted + '" onclick="toggleDLPermBtn(this)">' + dlBtnText + '</button>'
+      + '</div>'
+      + '<div class="aacts">'
+      + '<button class="abtn blue" data-sid="' + s.id + '" onclick="openChatFVBtn(this)">💬 Abrir Chat</button>'
+      + '<button class="abtn danger" data-sid="' + s.id + '" onclick="delChatBtn(this)">🗑 Apagar</button>'
+      + '</div></div>';
+  }
+  el.innerHTML = html;
+}
+function openChatFVBtn(btn) { openChatFV(btn.getAttribute('data-sid')); }
+function delChatBtn(btn) { delChatConfirm(btn.getAttribute('data-sid')); }
+function toggleDLPermBtn(btn) {
+  var sid = btn.getAttribute('data-sid');
+  var granted = btn.getAttribute('data-granted') === 'true';
+  toggleDLPerm(sid, granted);
+}
+function toggleDLPerm(sid, current) {
+  DB.setDLPerm(sid, !current);
+  renderChatList(); updateStats();
+  toast(!current?'✅ Download liberado para o cliente!':'🔒 Download revogado');
+  // Se chat aberto, actualizar banner
+  if(curSession===sid) updateFVBanner(!current);
+}
+
+// ── ABRIR CHAT COMPLETO ──
+async function openChatFV(sid) {
+  curSession=sid;
+  const sessions=DB.chatSessions();
+  const s=sessions.find(x=>x.id===sid)||{id:sid,msgs:[],buyerName:'Comprador',buyerPhone:'—'};
+
+  document.getElementById('fv-name').textContent=s.buyerName||'Comprador';
+  document.getElementById('fv-sub').textContent=`${s.buyerPhone||'—'} · ${sid.slice(0,16)}`;
+
+  updateFVBanner(DB.hasDL(sid));
+  await loadFVMsgs(sid, s);
+  document.getElementById('chatFV').classList.add('open');
+}
+
+function updateFVBanner(granted) {
+  const banner=document.getElementById('fv-dl-banner');
+  const title=document.getElementById('fv-dl-title');
+  const sub=document.getElementById('fv-dl-sub');
+  const btn=document.getElementById('fv-dl-btn');
+  if(granted){
+    banner.className='fv-dl-banner ok';
+    title.textContent='✅ Download Liberado';
+    sub.textContent='O cliente pode descarregar o livro agora.';
+    btn.textContent='🔒 Revogar'; btn.className='fv-dl-btn revoke';
+  } else {
+    banner.className='fv-dl-banner';
+    title.textContent='⏳ Download Pendente';
+    sub.textContent='Verifique o pagamento e libere o download.';
+    btn.textContent='✅ Liberar'; btn.className='fv-dl-btn grant';
+  }
+}
+
+function toggleFVDownload() {
+  if(!curSession) return;
+  const current=DB.hasDL(curSession);
+  DB.setDLPerm(curSession, !current);
+  updateFVBanner(!current);
+  renderChatList(); updateStats();
+  toast(!current?'✅ Download liberado!':'🔒 Download revogado');
+}
+
+async function loadFVMsgs(sid, s) {
+  const box=document.getElementById('fv-msgs');
+  box.innerHTML='<div style="text-align:center;color:var(--muted);font-size:11px;padding:18px;font-family:JetBrains Mono,monospace;">A desencriptar…</div>';
+
+  // Mensagens do comprador (xor legacy)
+  const buyerMsgs=(s.msgs||[]).map(m=>({...m, src:'buyer'}));
+
+  // Mensagens do admin (AES-256-GCM)
+  const adminMsgs=await DB.adminMsgsDecrypted(sid);
+  adminMsgs.forEach(m=>m.src='admin');
+
+  // Combinar por tempo
+  const all=[...buyerMsgs,...adminMsgs].sort((a,b)=>new Date(a.time||0)-new Date(b.time||0));
+
+  if(!all.length){
+    box.innerHTML='<div style="text-align:center;color:var(--muted);font-size:12px;padding:28px;">Nenhuma mensagem.</div>';return;
+  }
+
+  box.innerHTML=all.map(m=>{
+    const t=fmt(m.time);
+    const txt=m.text||m.content||m.preview||'';
+
+    if(m.type==='system'||m.src==='system')
+      return `<div class="bubble system">${txt}<div class="btime">${t}</div></div>`;
+
+    if(m.src==='admin')
+      return `<div style="align-self:flex-end;max-width:84%">
+        <div class="admin-label">🔒 ADMIN · AES-256</div>
+        <div class="bubble admin-msg">${txt}<div class="btime">${t}</div></div>
+      </div>`;
+
+    if(txt==='[IMAGEM]'||txt.startsWith('data:image'))
+      return `<div class="bubble user">[📷 Imagem enviada]<div class="btime">${t}</div></div>`;
+
+    return `<div class="bubble ${m.type==='bot'?'bot':'user'}">${txt}<div class="btime">${t}</div></div>`;
+  }).join('');
+
+  setTimeout(()=>{box.scrollTop=box.scrollHeight;},80);
+}
+
+function closeChatFV() {
+  document.getElementById('chatFV').classList.remove('open'); curSession=null;
+}
+
+async function sendAdminMsg() {
+  const inp=document.getElementById('fv-reply-inp');
+  const txt=inp.value.trim();
+  if(!txt||!curSession) return;
+  inp.value=''; inp.style.height='auto';
+
+  const m=await DB.addAdminMsg(curSession, txt);
+
+  // Actualizar meta da sessão
+  const meta=DB.chatMeta(curSession);
+  meta.lastActivity=new Date().toISOString();
+  DB.saveMeta(curSession,meta);
+
+  // Notificar site principal (o site lê esta chave)
+  localStorage.setItem('adm_reply_'+curSession, JSON.stringify({text:m.preview,time:m.time,ts:Date.now()}));
+
+  // Adicionar à view
+  const box=document.getElementById('fv-msgs');
+  const div=document.createElement('div');
+  div.style.cssText='align-self:flex-end;max-width:84%';
+  div.innerHTML=`<div class="admin-label">🔒 ADMIN · AES-256</div><div class="bubble admin-msg">${txt}<div class="btime">${fmt(m.time)}</div></div>`;
+  box.appendChild(div); box.scrollTop=box.scrollHeight;
+  toast('📤 Mensagem encriptada enviada');
+}
+
+function delChat(id) {
+  ['sgm_chat_','sgm_chat_meta_','adm_chat_'].forEach(p=>localStorage.removeItem(p+id));
+  renderChatList(); updateStats(); toast('🗑 Chat apagado');
+}
+
+// ══════════════════════════════════════════════════
+//   COMENTÁRIOS — DELETE FUNCIONAL
+// ══════════════════════════════════════════════════
+function renderComments() {
+  var q = (document.getElementById('q-cm') ? document.getElementById('q-cm').value : '').toLowerCase();
+  var cs = DB.comments();
+  if(q) cs = cs.filter(function(c){ return (c.emailDisplay||c.email||'').toLowerCase().indexOf(q)!==-1 || (c.text||'').toLowerCase().indexOf(q)!==-1; });
+  var el = document.getElementById('list-cm');
+  if(!cs.length){ el.innerHTML='<div class="empty"><div class="ei">💬</div><div class="et">Nenhum comentario</div></div>'; return; }
+  var html = '';
+  for(var i=0; i<cs.length; i++){
+    var c = cs[i];
+    var initial = (c.emailDisplay||c.email||'?')[0].toUpperCase();
+    var emailDisplay = c.emailDisplay||c.email||'—';
+    html += '<div class="acard">'
+      + '<div class="card-head">'
+      + '<div style="display:flex;align-items:center;gap:7px;">'
+      + '<div style="width:25px;height:25px;border-radius:50%;background:rgba(139,26,26,.65);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:JetBrains Mono,monospace;">' + initial + '</div>'
+      + '<span style="font-size:11px;color:var(--muted);font-family:JetBrains Mono,monospace;">' + emailDisplay + '</span>'
+      + '</div>'
+      + '<span class="card-time">' + (c.date||'—') + '</span>'
+      + '</div>'
+      + '<p style="font-size:13px;color:var(--cream);line-height:1.55;margin-bottom:9px;">"' + (c.text||'') + '"</p>'
+      + '<div class="aacts"><button class="abtn danger" onclick="delCommentConfirm(' + i + ')">🗑 Apagar</button></div>'
+      + '</div>';
+  }
+  el.innerHTML = html;
+}
+function delComment(i) {
+  const db=DB.comments(); db.splice(i,1); DB.saveCm(db);
+  renderComments(); updateStats(); toast('🗑 Comentário apagado');
+}
+
+// ══════════════════════════════════════════════════
+//   IPs — DELETE/BAN/UNBAN FUNCIONAL
+// ══════════════════════════════════════════════════
+function renderIPs(filter) {
+  var q = (document.getElementById('q-ip') ? document.getElementById('q-ip').value : '').toLowerCase();
+  var ips = DB.ips();
+  if(filter === 'banned') ips = ips.filter(function(x){ return x.status === 'banned'; });
+  if(q) ips = ips.filter(function(x){ return (x.ip||'').indexOf(q) !== -1; });
+  var el = document.getElementById('list-ip');
+  if(!ips.length) { el.innerHTML = '<div class="empty"><div class="ei">👥</div><div class="et">Nenhum IP registado</div></div>'; return; }
+  var html = '';
+  for(var i = 0; i < ips.length; i++) {
+    var ip = ips[i];
+    var banned = ip.status === 'banned';
+    var banBtn = banned
+      ? '<button class="abtn ok" onclick="unbanIPConfirm(' + i + ')">🔓 Desbanir</button>'
+      : '<button class="abtn danger" onclick="banIPConfirm(' + i + ')">🚫 Banir</button>';
+    var bannedRow = ip.bannedAt ? '<div class="drow"><span class="dk">Banido em</span><span class="dv" style="color:var(--red)">' + fmt(ip.bannedAt) + '</span></div>' : '';
+    html += '<div class="acard">'
+      + '<div class="card-head">'
+      + '<span class="bdg ' + (banned ? 'bdg-r' : 'bdg-g') + '">' + (banned ? '🚫 BANIDO' : '✅ OK') + '</span>'
+      + '<span class="card-time">' + fmt(ip.lastSeen) + '</span>'
+      + '</div>'
+      + '<div class="drow"><span class="dk">Endereco IP</span><span class="dv mono">' + (ip.ip||'—') + '</span></div>'
+      + '<div class="drow"><span class="dk">Visitas</span><span class="dv">' + (ip.visits||1) + '</span></div>'
+      + '<div class="drow"><span class="dk">1a Visita</span><span class="dv">' + fmt(ip.firstSeen) + '</span></div>'
+      + bannedRow
+      + '<div class="aacts">'
+      + banBtn
+      + '<button class="abtn danger" onclick="delIPConfirm(' + i + ')">🗑 Remover</button>'
+      + '</div></div>';
+  }
+  el.innerHTML = html;
+}
+function banIP(i)   { const db=DB.ips(); db[i].status='banned'; db[i].bannedAt=new Date().toISOString(); db[i].reason='Admin'; DB.saveIPs(db); renderIPs(); updateStats(); toast('🚫 IP banido'); }
+function unbanIP(i) { const db=DB.ips(); db[i].status='ok'; delete db[i].bannedAt; delete db[i].reason; DB.saveIPs(db); renderIPs(); updateStats(); toast('🔓 IP desbanido'); }
+function delIP(i)   { const db=DB.ips(); db.splice(i,1); DB.saveIPs(db); renderIPs(); updateStats(); toast('🗑 IP removido'); }
+
+// ══════════════════════════════════════════════════
+//   FRAUDE — DELETE FUNCIONAL
+// ══════════════════════════════════════════════════
+function renderFraud() {
+  var all = DB.txs();
+  var frauds = all.filter(function(t){ return t.type==='fraud_attempt'; });
+  var el = document.getElementById('list-fraud');
+  if(!frauds.length){ el.innerHTML='<div class="empty"><div class="ei">🛡️</div><div class="et">Nenhuma fraude detectada</div><div class="es">O sistema esta protegido</div></div>'; return; }
+  var html = '';
+  for(var i=0; i<frauds.length; i++){
+    var t = frauds[i];
+    html += '<div class="acard" style="border-color:rgba(239,68,68,.18);">'
+      + '<div class="card-head"><span class="bdg bdg-r">🚫 FRAUDE</span><span class="card-time">' + fmt(t.timestamp) + '</span></div>'
+      + '<div class="drow"><span class="dk">Nome</span><span class="dv">' + (t.buyerName||'—') + '</span></div>'
+      + '<div class="drow"><span class="dk">Telefone</span><span class="dv mono">' + (t.buyerPhone||'—') + '</span></div>'
+      + '<div class="drow"><span class="dk">Num inserido</span><span class="dv mono" style="color:var(--red)">' + (t.numberEntered||'—') + '</span></div>'
+      + '<div class="drow"><span class="dk">Num esperado</span><span class="dv mono" style="color:var(--green)">852260828</span></div>'
+      + '<div class="aacts"><button class="abtn danger" onclick="delFraudConfirm(' + i + ')">🗑 Apagar</button></div>'
+      + '</div>';
+  }
+  el.innerHTML = html;
+}
+function delFraud(i) {
+  const all=DB.txs(); const frauds=all.filter(t=>t.type==='fraud_attempt');
+  const idx=all.indexOf(frauds[i]); if(idx>-1) all.splice(idx,1);
+  DB.saveTxs(all); renderFraud(); updateStats(); toast('🗑 Registo apagado');
+}
+
+// ══════════════════════════════════════════════════
+//   CONFIG ZONE
+// ══════════════════════════════════════════════════
+function clearBanned() {
+  const db=DB.ips(); db.forEach(x=>{x.status='ok';delete x.bannedAt;delete x.reason;}); DB.saveIPs(db);
+  renderIPs(); updateStats(); toast('🔓 Todos os IPs desbanidos');
+}
+function clearFraud() {
+  DB.saveTxs(DB.txs().filter(t=>t.type!=='fraud_attempt'));
+  renderFraud(); updateStats(); toast('🗑 Fraudes limpas');
+}
+function clearAllData() {
+  ['sgm_receipts','sgm_comments','sgm_ip_db','sgm_txs','sgm_proofs','sgm_downloads','sgm_likes','sgm_liked','adm_dl_perms'].forEach(k=>localStorage.removeItem(k));
+  Object.keys(localStorage).filter(k=>k.startsWith('sgm_chat_')||k.startsWith('adm_chat_')||k.startsWith('sgm_chat_meta_')).forEach(k=>localStorage.removeItem(k));
+  refreshAll(); toast('🗑 Todos os dados eliminados');
+}
+function toggleAutoRefresh(on) {
+  if(arInt) clearInterval(arInt);
+  if(on) { arInt=setInterval(refreshAll,30000); toast('🔄 Auto-actualização activa (30s)'); }
+  else toast('⏹ Auto-actualização desactivada');
+}
+
+// ══════════════════════════════════════════════════
+//   EXPORTAÇÃO
+// ══════════════════════════════════════════════════
+function exportAll() {
+  dlText(JSON.stringify({at:new Date().toISOString(),receipts:DB.receipts(),comments:DB.comments(),ips:DB.ips(),txs:DB.txs(),downloads:DB.downloads(),likes:DB.likes()},null,2),`ntila_backup_${Date.now()}.json`);
+  toast('📦 Backup exportado');
+}
+function exportReceipts() {
+  const rs=DB.receipts();
+  let t=`EXTRATO — NTILA MARKETING\n${'='.repeat(42)}\nExportado: ${new Date().toLocaleString('pt')}\nVendas: ${rs.length} · Receita: ${rs.length*150} MZN\n${'='.repeat(42)}\n\n`;
+  rs.forEach((r,i)=>{t+=`[${i+1}] ${r.id||'—'}\n    Comprador: ${r.buyer||'—'}\n    Telefone : ${r.phone||'—'}\n    Método   : ${r.method||'—'}\n    Valor    : ${r.amount||'150 MZN'}\n    Data     : ${r.date||'—'} ${r.time||''}\n    Hash     : ${r.hash||'—'}\n\n`;});
+  dlText(t,`extrato_${Date.now()}.txt`); toast('🧾 Extrato exportado');
+}
+function exportCSV() {
+  let c='ID,Comprador,Telefone,Método,Valor,Data,Status,Hash\n';
+  DB.receipts().forEach(r=>{c+=`"${r.id||''}","${r.buyer||''}","${r.phone||''}","${r.method||''}","${r.amount||''}","${r.date||''} ${r.time||''}","${r.status||''}","${r.hash||''}"\n`;});
+  dlText(c,`vendas_${Date.now()}.csv`); toast('📊 CSV exportado');
+}
+function dlText(txt,name) {
+  const b=new Blob([txt],{type:'text/plain;charset=utf-8'});
+  const u=URL.createObjectURL(b);
+  const a=document.createElement('a'); a.href=u; a.download=name;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(u);
+}
+
+// ══════════════════════════════════════════════════
+//   UI HELPERS
+// ══════════════════════════════════════════════════
+function switchTab(tab) {
+  document.querySelectorAll('.atab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.apanel').forEach(p=>p.classList.remove('active'));
+  const b=document.querySelector(`[data-tab="${tab}"]`); if(b) b.classList.add('active');
+  const p=document.getElementById('panel-'+tab); if(p) p.classList.add('active');
+}
+function toggleEl(id) {
+  const el=document.getElementById(id); if(!el) return;
+  el.style.display=el.style.display==='none'||!el.style.display?'block':'none';
+}
+function openModal(title,body) {
+  document.getElementById('modal-title').textContent=title;
+  document.getElementById('modal-body').innerHTML=body;
+  document.getElementById('modalBg').classList.add('open');
+}
+function closeModal() { document.getElementById('modalBg').classList.remove('open'); }
+document.getElementById('modalBg').addEventListener('click',e=>{if(e.target===document.getElementById('modalBg'))closeModal();});
+
+let confCB=null;
+function conf(title,msg,cb) {
+  document.getElementById('conf-title').textContent=title;
+  document.getElementById('conf-msg').textContent=msg;
+  confCB=cb; document.getElementById('confBg').classList.add('open');
+}
+function closeConf() { document.getElementById('confBg').classList.remove('open'); confCB=null; }
+document.getElementById('conf-yes').onclick=()=>{if(confCB)confCB(); closeConf();};
+
+let toastT;
+function toast(msg) {
+  const el=document.getElementById('toast'); el.textContent=msg; el.classList.add('show');
+  clearTimeout(toastT); toastT=setTimeout(()=>el.classList.remove('show'),2800);
+}
+function fmt(iso) {
+  if(!iso) return '—';
+  try { const d=new Date(iso); if(isNaN(d)) return iso; return d.toLocaleDateString('pt',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('pt',{hour:'2-digit',minute:'2-digit'}); }
+  catch { return iso; }
+}
+function autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,100)+'px'; }
+
+// ══════════════════════════════════════════════════
+//   WRAPPER FUNCTIONS — evitam JS inline complexo
+// ══════════════════════════════════════════════════
+function delReceiptConfirm(i) {
+  var r = DB.receipts()[i];
+  conf('Apagar este recibo?', r ? 'ID: '+(r.id||'').slice(0,20) : 'Recibo #'+i, function(){ delReceipt(i); });
+}
+function delChatConfirm(id) {
+  conf('Apagar esta sessão de chat?', 'ID: '+String(id).slice(0,16), function(){ delChat(id); });
+}
+function delCommentConfirm(i) {
+  var cs = DB.comments();
+  var preview = cs[i] ? (cs[i].text||'').slice(0,30)+'...' : 'Comentário #'+i;
+  conf('Apagar comentário?', preview, function(){ delComment(i); });
+}
+function delFraudConfirm(i) {
+  var all = DB.txs().filter(function(t){return t.type==='fraud_attempt';});
+  var name = all[i] ? (all[i].buyerName||'Desconhecido') : 'Registo #'+i;
+  conf('Apagar registo de fraude?', name, function(){ delFraud(i); });
+}
+function banIPConfirm(i) {
+  var ip = DB.ips()[i];
+  conf('Banir este IP?', ip ? ip.ip : 'IP #'+i, function(){ banIP(i); });
+}
+function unbanIPConfirm(i) {
+  var ip = DB.ips()[i];
+  conf('Desbanir este IP?', ip ? ip.ip : 'IP #'+i, function(){ unbanIP(i); });
+}
+function delIPConfirm(i) {
+  var ip = DB.ips()[i];
+  conf('Remover registo de IP?', ip ? ip.ip : 'IP #'+i, function(){ delIP(i); });
+}
+function resetCreds() {
+  if(!confirm('Repor as credenciais para os valores padrao?\n\nAs credenciais serao repostas para os valores iniciais.\n\nEsta accao apaga as credenciais personalizadas.')) return;
+  localStorage.removeItem('adm_creds');
+  document.getElementById('loginUser').value = 'admin';
+  document.getElementById('loginPass').value = '';
+  document.getElementById('loginPass').focus();
+  SES.tries = 0;
+  SES.lockUntil = 0;
+  showErr('✅ Credenciais repostas com sucesso. Use as credenciais iniciais.');
+}
+
+// Init — limpar dados corrompidos e configurar teclas
+(function init() {
+  // Validar credenciais guardadas ao carregar
+  try {
+    const raw = localStorage.getItem('adm_creds');
+    if(raw) {
+      const parsed = JSON.parse(raw);
+      if(typeof parsed.user !== 'string' || typeof parsed.pass !== 'string' ||
+         parsed.user.length < 1 || parsed.pass.length < 1) {
+        localStorage.removeItem('adm_creds');
+        console.warn('Admin: credenciais corrompidas removidas');
+      }
+    }
+  } catch(e) {
+    localStorage.removeItem('adm_creds');
+  }
+
+  // Enter no campo utilizador → foco para senha
+  const uInp = document.getElementById('loginUser');
+  const pInp = document.getElementById('loginPass');
+  if(uInp) uInp.addEventListener('keydown', function(e) { if(e.key==='Enter') { e.preventDefault(); pInp.focus(); } });
+  if(pInp) pInp.addEventListener('keydown', function(e) { if(e.key==='Enter') { e.preventDefault(); doLogin(); } });
+})();
+</script>
+</body>
+</html>
