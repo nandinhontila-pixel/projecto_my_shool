@@ -1,0 +1,28 @@
+{
+  "name": "Ntila Estudos",
+  "short_name": "Ntila",
+  "description": "Portal de estudos de História — Guerras Mundiais e Guerra Fria",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#000000",
+  "theme_color": "#4F8EF7",
+  "icons": [
+    {
+      "src": "https://via.placeholder.com/192x192/4F8EF7/ffffff?text=N",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://via.placeholder.com/512x512/4F8EF7/ffffff?text=N",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["education"],
+  "lang": "pt",
+  "dir": "ltr",
+  "scope": "/"
+}

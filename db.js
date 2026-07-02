@@ -1,504 +1,574 @@
 /**
- * ═══════════════════════════════════════════════════════════
- *  NTILA MARKETING — BASE DE DADOS CENTRALIZADA
- *  db.js  |  Versão 1.0  |  Partilhado entre site e admin
- * ═══════════════════════════════════════════════════════════
+ * ═══════════════════════════════════════════════════════════════════
+ *  NTILA ESTUDOS — BASE DE DADOS v3.0
+ *  100% localStorage — Sem Firebase, sem internet, funciona em
+ *  qualquer ambiente incluindo claudeusercontent.com
+ *  Sincronização entre abas via BroadcastChannel + storage events
+ * ═══════════════════════════════════════════════════════════════════
  *
- *  Armazenamento: localStorage (client-side)
- *  Encriptação:   AES-256-GCM via Web Crypto API (chats)
- *                 XOR+Base64 (legado, sessões antigas)
- *
- *  Tabelas (chaves localStorage):
- *  ┌─────────────────────┬──────────────────────────────────┐
- *  │ sgm_receipts        │ Recibos de pagamentos            │
- *  │ sgm_comments        │ Comentários dos utilizadores     │
- *  │ sgm_ip_db           │ Registo de endereços IP          │
- *  │ sgm_txs             │ Transacções e tentativas fraude  │
- *  │ sgm_proofs          │ Comprovativos de pagamento       │
- *  │ sgm_downloads       │ Registo de downloads             │
- *  │ sgm_likes           │ Contador de gostos               │
- *  │ sgm_liked           │ Estado like do utilizador actual │
- *  │ adm_dl_perms        │ Permissões de download (admin)   │
- *  │ adm_creds           │ Credenciais do administrador     │
- *  │ adm_e2e_k           │ Chave AES-256 do admin           │
- *  │ sgm_chat_{id}       │ Mensagens do chat (XOR)          │
- *  │ sgm_chat_meta_{id}  │ Metadata da sessão de chat       │
- *  │ adm_chat_{id}       │ Respostas do admin (AES-256-GCM) │
- *  │ sgm_dl_perm_change  │ Canal de notificação admin→site  │
- *  │ adm_reply_{id}      │ Canal de notificação admin→chat  │
- *  └─────────────────────┴──────────────────────────────────┘
+ *  TABELAS (chaves localStorage):
+ *  ┌─────────────────────────┬────────────────────────────────────┐
+ *  │ ntila_topics            │ Temas publicados pelo admin        │
+ *  │ ntila_comments_{id}     │ Comentários por tema               │
+ *  │ ntila_reactions         │ Gostos/Não-Gostos por tema         │
+ *  │ ntila_chat_{sid}        │ Mensagens de chat por sessão       │
+ *  │ ntila_chat_sessions     │ Lista de sessões de chat           │
+ *  │ ntila_ip_db             │ Registo de IPs                     │
+ *  │ ntila_txs               │ Transacções e pagamentos           │
+ *  │ ntila_analytics         │ Registo de acessos                 │
+ *  │ ntila_adm_creds         │ Credenciais do administrador       │
+ *  │ ntila_chat_sid          │ ID de sessão do utilizador         │
+ *  └─────────────────────────┴────────────────────────────────────┘
  */
+
+/* ── Prevenir redeclaração se o script for incluído duas vezes ── */
+if (window.__NtilaDBLoaded) {
+  console.log('[NtilaDB] Já inicializado — a ignorar redeclaração.');
+} else {
+window.__NtilaDBLoaded = true;
 
 'use strict';
 
 // ═══════════════════════════════════════════════════════════
-//   ENCRIPTAÇÃO AES-256-GCM (ponta-a-ponta para chats)
+//  CANAL DE SINCRONIZAÇÃO ENTRE ABAS (BroadcastChannel)
 // ═══════════════════════════════════════════════════════════
-const NtilaE2E = {
-  _key: null,
+const _BC = (typeof BroadcastChannel !== 'undefined')
+  ? new BroadcastChannel('ntila_sync')
+  : null;
 
-  /** Obter ou gerar chave AES-256 persistente */
-  async key() {
-    if (this._key) return this._key;
-    try {
-      const stored = localStorage.getItem('adm_e2e_k');
-      if (stored) {
-        const raw = Uint8Array.from(atob(stored), c => c.charCodeAt(0));
-        this._key = await crypto.subtle.importKey(
-          'raw', raw, { name: 'AES-GCM' }, true, ['encrypt', 'decrypt']
-        );
-      } else {
-        this._key = await crypto.subtle.generateKey(
-          { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']
-        );
-        const raw = await crypto.subtle.exportKey('raw', this._key);
-        localStorage.setItem('adm_e2e_k',
-          btoa(String.fromCharCode(...new Uint8Array(raw)))
-        );
-      }
-    } catch (e) {
-      console.warn('E2E key error:', e);
-    }
-    return this._key;
-  },
+const _listeners = {};   // { evento: [callbacks] }
 
-  /** Encriptar texto → base64 (IV + ciphertext) */
-  async encrypt(text) {
-    try {
-      const k = await this.key();
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-      const ct = await crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv }, k, new TextEncoder().encode(text)
-      );
-      const out = new Uint8Array(12 + ct.byteLength);
-      out.set(iv); out.set(new Uint8Array(ct), 12);
-      return btoa(String.fromCharCode(...out));
-    } catch {
-      return btoa(unescape(encodeURIComponent(text)));
-    }
-  },
-
-  /** Desencriptar base64 → texto */
-  async decrypt(b64) {
-    try {
-      const k = await this.key();
-      const buf = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-      const plain = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: buf.slice(0, 12) }, k, buf.slice(12)
-      );
-      return new TextDecoder().decode(plain);
-    } catch {
-      try { return decodeURIComponent(escape(atob(b64))); } catch { return b64; }
-    }
-  }
-};
-
-// ═══════════════════════════════════════════════════════════
-//   ENCRIPTAÇÃO XOR (legado — sessões antigas do site)
-// ═══════════════════════════════════════════════════════════
-function ntilaXorDecrypt(enc, key = 'SGM2025') {
-  try {
-    const s = decodeURIComponent(escape(atob(enc)));
-    let r = '';
-    for (let i = 0; i < s.length; i++)
-      r += String.fromCharCode(s.charCodeAt(i) ^ key.charCodeAt(i % key.length));
-    return r;
-  } catch { return '[ENCRIPTADO]'; }
+function _emit(event, data) {
+  if (_BC) _BC.postMessage({ event, data, ts: Date.now() });
+  _triggerLocal(event, data);
 }
 
-async function ntilaXorEncrypt(str, key = 'SGM2025') {
-  let r = '';
-  for (let i = 0; i < str.length; i++)
-    r += String.fromCharCode(str.charCodeAt(i) ^ key.charCodeAt(i % key.length));
-  return btoa(unescape(encodeURIComponent(r)));
+function _triggerLocal(event, data) {
+  (_listeners[event] || []).forEach(cb => { try { cb(data); } catch(e){} });
+}
+
+function _on(event, cb) {
+  if (!_listeners[event]) _listeners[event] = [];
+  _listeners[event].push(cb);
+  return () => { _listeners[event] = _listeners[event].filter(f => f !== cb); };
+}
+
+if (_BC) {
+  _BC.onmessage = ({ data: msg }) => {
+    if (msg && msg.event) _triggerLocal(msg.event, msg.data);
+  };
 }
 
 // ═══════════════════════════════════════════════════════════
-//   UTILITÁRIOS
+//  UTILITÁRIOS
 // ═══════════════════════════════════════════════════════════
-function ntilaSimpleHash(str) {
-  let h = 0;
-  for (let i = 0; i < str.length; i++)
-    h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
-  return (h >>> 0).toString(16).padStart(8, '0').toUpperCase();
+
+function ntilaUID() {
+  return Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
 }
 
 function ntilaFmt(iso) {
   if (!iso) return '—';
   try {
     const d = new Date(iso);
-    if (isNaN(d)) return iso;
-    return d.toLocaleDateString('pt', { day: '2-digit', month: 'short' })
-      + ' ' + d.toLocaleTimeString('pt', { hour: '2-digit', minute: '2-digit' });
-  } catch { return iso; }
+    if (isNaN(d)) return String(iso);
+    const diff = (Date.now() - d) / 1000;
+    if (diff < 60)     return 'agora mesmo';
+    if (diff < 3600)   return Math.floor(diff / 60) + 'm atrás';
+    if (diff < 86400)  return Math.floor(diff / 3600) + 'h atrás';
+    if (diff < 604800) return Math.floor(diff / 86400) + 'd atrás';
+    return d.toLocaleDateString('pt-MZ', { day: '2-digit', month: 'short', year: 'numeric' });
+  } catch { return String(iso); }
+}
+
+function ntilaHash(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++)
+    h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(16).padStart(8, '0').toUpperCase();
+}
+
+function maskEmail(email) {
+  if (!email || !email.includes('@')) return email;
+  const [u, d] = email.split('@');
+  return u.slice(0, 2) + '***@' + d;
+}
+
+async function getClientIP() {
+  try {
+    const r = await fetch('https://api.ipify.org?format=json');
+    return (await r.json()).ip || 'unknown';
+  } catch { return 'unknown'; }
 }
 
 // ═══════════════════════════════════════════════════════════
-//   BASE DE DADOS PRINCIPAL — NtilaDB
+//  HELPERS localStorage
+// ═══════════════════════════════════════════════════════════
+function _get(key)      { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; } }
+function _set(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); return true; } catch { return false; } }
+function _arr(key)      { const v = _get(key); return Array.isArray(v) ? v : []; }
+function _obj(key)      { const v = _get(key); return (v && typeof v === 'object' && !Array.isArray(v)) ? v : {}; }
+
+// ═══════════════════════════════════════════════════════════
+//  BASE DE DADOS PRINCIPAL — NtilaDB
 // ═══════════════════════════════════════════════════════════
 const NtilaDB = {
 
-  /* ── Helpers internos ── */
-  _get(key) {
-    try { return JSON.parse(localStorage.getItem(key) || '[]'); }
-    catch { return []; }
-  },
-  _set(key, value) {
-    try { localStorage.setItem(key, JSON.stringify(value)); }
-    catch (e) { console.error('NtilaDB._set error:', e); }
-  },
-  _getObj(key) {
-    try { return JSON.parse(localStorage.getItem(key) || '{}'); }
-    catch { return {}; }
-  },
+  // ══════════════════════════════════════
+  //  TEMAS
+  // ══════════════════════════════════════
 
-  /* ════════════════════════════════
-     GOSTOS (LIKES)
-  ════════════════════════════════ */
-  getLikes() { return parseInt(localStorage.getItem('sgm_likes') || '0'); },
-  setLikes(n) { localStorage.setItem('sgm_likes', String(n)); },
-  isLiked()   { return localStorage.getItem('sgm_liked') === '1'; },
-  setLiked(v) { localStorage.setItem('sgm_liked', v ? '1' : '0'); },
-
-  toggleLike() {
-    const liked  = !this.isLiked();
-    const count  = liked ? this.getLikes() + 1 : Math.max(0, this.getLikes() - 1);
-    this.setLiked(liked);
-    this.setLikes(count);
-    return { liked, count };
-  },
-
-  /* ════════════════════════════════
-     COMENTÁRIOS
-  ════════════════════════════════ */
-  getComments() { return this._get('sgm_comments'); },
-
-  addComment({ email, text }) {
-    const arr = this.getComments();
-    const comment = {
-      id:           Date.now(),
-      email:        email,
-      emailDisplay: email.replace(/(.{2}).+(@.+)/, '$1***$2'),
-      emailHash:    btoa(email).replace(/=/g, ''),
-      text:         text,
-      date:         new Date().toLocaleDateString('pt-MZ', { day: '2-digit', month: 'short', year: 'numeric' })
+  /** Guardar ou actualizar tema */
+  async saveTopic(data) {
+    const topics = _arr('ntila_topics');
+    const topic = {
+      id:             data.id || ntilaUID(),
+      title:          data.title || '',
+      slug:           (data.title || '').toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''),
+      coverImage:     data.coverImage || '',
+      intro:          data.intro || '',
+      content:        data.content || '',
+      era:            data.era || '',
+      tag:            data.tag || '',
+      emoji:          data.emoji || '📖',
+      order:          data.order ?? topics.length,
+      allowComments:  data.allowComments !== false,
+      allowReactions: data.allowReactions !== false,
+      publishedAt:    data.publishedAt || new Date().toISOString(),
+      updatedAt:      new Date().toISOString()
     };
+    const idx = topics.findIndex(t => t.id === topic.id);
+    if (idx >= 0) topics[idx] = topic; else topics.push(topic);
+    topics.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    _set('ntila_topics', topics);
+    _emit('topics_changed', topics);
+    return topic;
+  },
+
+  /** Obter todos os temas */
+  async getTopics() {
+    return _arr('ntila_topics');
+  },
+
+  /** Obter tema por ID */
+  async getTopic(id) {
+    return _arr('ntila_topics').find(t => t.id === id) || null;
+  },
+
+  /** Eliminar tema */
+  async deleteTopic(id) {
+    const topics = _arr('ntila_topics').filter(t => t.id !== id);
+    _set('ntila_topics', topics);
+    _emit('topics_changed', topics);
+  },
+
+  /** Escutar alterações de temas em tempo real */
+  listenTopics(cb) {
+    cb(_arr('ntila_topics'));                    // emitir imediatamente
+    return _on('topics_changed', cb);           // retorna função de cancelamento
+  },
+
+  // ══════════════════════════════════════
+  //  REACÇÕES (GOSTOS / NÃO-GOSTOS)
+  // ══════════════════════════════════════
+
+  async getReactions(topicId) {
+    const all = _obj('ntila_reactions');
+    return all[topicId] || { likes: 0, dislikes: 0 };
+  },
+
+  async toggleReaction(topicId, type) {
+    const all      = _obj('ntila_reactions');
+    const r        = all[topicId] || { likes: 0, dislikes: 0 };
+    const key      = `ntila_reacted_${topicId}`;
+    const previous = localStorage.getItem(key);
+
+    // Remover voto anterior
+    if (previous === 'like')    r.likes    = Math.max(0, (r.likes    || 0) - 1);
+    if (previous === 'dislike') r.dislikes = Math.max(0, (r.dislikes || 0) - 1);
+
+    // Adicionar ou remover novo voto
+    if (previous !== type) {
+      if (type === 'like')    r.likes++;
+      if (type === 'dislike') r.dislikes++;
+      localStorage.setItem(key, type);
+    } else {
+      localStorage.removeItem(key);
+    }
+
+    all[topicId] = r;
+    _set('ntila_reactions', all);
+    _emit('reactions_' + topicId, r);
+    return r;
+  },
+
+  getUserReaction(topicId) {
+    return localStorage.getItem(`ntila_reacted_${topicId}`) || null;
+  },
+
+  listenReactions(topicId, cb) {
+    this.getReactions(topicId).then(cb);
+    return _on('reactions_' + topicId, cb);
+  },
+
+  // ══════════════════════════════════════
+  //  COMENTÁRIOS
+  // ══════════════════════════════════════
+
+  async addComment(topicId, { name, email, text, parentId = null, isAdmin = false }) {
+    const ip = await getClientIP();
+    const comment = {
+      id:          ntilaUID(),
+      topicId,
+      parentId:    parentId || null,
+      name:        (name || 'Anónimo').trim(),
+      email:       email || '',
+      emailMasked: email ? maskEmail(email) : '',
+      emailHash:   email ? ntilaHash(email) : '',
+      text:        (text || '').trim(),
+      likes:       0,
+      likedBy:     [],
+      isAdmin:     !!isAdmin,
+      ip,
+      createdAt:   new Date().toISOString(),
+      updatedAt:   new Date().toISOString()
+    };
+    const key  = `ntila_comments_${topicId}`;
+    const arr  = _arr(key);
     arr.unshift(comment);
-    this._set('sgm_comments', arr);
+    _set(key, arr);
+    _emit('comments_' + topicId, arr);
     return comment;
   },
 
-  deleteComment(index) {
-    const arr = this.getComments();
-    arr.splice(index, 1);
-    this._set('sgm_comments', arr);
+  async getComments(topicId, sortBy = 'recent') {
+    const all = _arr(`ntila_comments_${topicId}`);
+    const sorted = [...all];
+    if (sortBy === 'recent')   sorted.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    if (sortBy === 'oldest')   sorted.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    if (sortBy === 'relevant') sorted.sort((a, b) => (b.likes || 0) - (a.likes || 0));
+    return sorted;
   },
 
-  /* ════════════════════════════════
-     IPs
-  ════════════════════════════════ */
-  getIPs()      { return this._get('sgm_ip_db'); },
-  saveIPs(data) { this._set('sgm_ip_db', data); },
+  async likeComment(topicId, commentId) {
+    const key     = `ntila_comments_${topicId}`;
+    const arr     = _arr(key);
+    const item    = arr.find(c => c.id === commentId);
+    if (!item) return false;
+    const likedKey = `ntila_comment_liked_${commentId}`;
+    const liked    = localStorage.getItem(likedKey) === '1';
+    item.likes = liked ? Math.max(0, (item.likes || 0) - 1) : (item.likes || 0) + 1;
+    localStorage.setItem(likedKey, liked ? '0' : '1');
+    _set(key, arr);
+    _emit('comments_' + topicId, arr);
+    return !liked;
+  },
 
-  registerIP(ip, status = 'ok') {
-    const db  = this.getIPs();
+  isCommentLiked(commentId) {
+    return localStorage.getItem(`ntila_comment_liked_${commentId}`) === '1';
+  },
+
+  async deleteComment(topicId, commentId) {
+    const key = `ntila_comments_${topicId}`;
+    const arr = _arr(key).filter(c => c.id !== commentId && c.parentId !== commentId);
+    _set(key, arr);
+    _emit('comments_' + topicId, arr);
+  },
+
+  listenComments(topicId, cb, sortBy = 'recent') {
+    this.getComments(topicId, sortBy).then(cb);
+    return _on('comments_' + topicId, data => {
+      const sorted = [...data];
+      if (sortBy === 'recent')   sorted.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      if (sortBy === 'oldest')   sorted.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+      if (sortBy === 'relevant') sorted.sort((a, b) => (b.likes || 0) - (a.likes || 0));
+      cb(sorted);
+    });
+  },
+
+  // ══════════════════════════════════════
+  //  CHAT UTILIZADOR ↔ ADMINISTRADOR
+  // ══════════════════════════════════════
+
+  getChatSessionId() {
+    let sid = localStorage.getItem('ntila_chat_sid');
+    if (!sid) { sid = ntilaUID(); localStorage.setItem('ntila_chat_sid', sid); }
+    return sid;
+  },
+
+  newChatSession() {
+    const sid = ntilaUID();
+    localStorage.setItem('ntila_chat_sid', sid);
+    return sid;
+  },
+
+  async sendChatMessage(sessionId, { text, sender = 'user', name = '' }) {
+    const ip = await getClientIP();
+    const msg = {
+      id:        ntilaUID(),
+      sessionId,
+      text:      (text || '').trim(),
+      sender,
+      name:      name || (sender === 'admin' ? 'Administrador' : 'Utilizador'),
+      ip,
+      createdAt: new Date().toISOString(),
+      read:      false
+    };
+
+    // Guardar mensagem na sessão
+    const key = `ntila_chat_${sessionId}`;
+    const arr = _arr(key);
+    arr.push(msg);
+    _set(key, arr);
+
+    // Actualizar lista de sessões
+    const sessions = _arr('ntila_chat_sessions');
+    const si = sessions.findIndex(s => s.sessionId === sessionId);
+    const sData = {
+      sessionId,
+      lastMessage:  text.slice(0, 60),
+      lastActivity: msg.createdAt,
+      userName:     name || msg.name,
+      ip,
+      unread:       sender === 'user'
+        ? ((si >= 0 ? sessions[si].unread : 0) || 0) + 1
+        : 0
+    };
+    if (si >= 0) sessions[si] = sData; else sessions.unshift(sData);
+    sessions.sort((a, b) => new Date(b.lastActivity) - new Date(a.lastActivity));
+    _set('ntila_chat_sessions', sessions);
+
+    _emit('chat_' + sessionId, arr);
+    _emit('chat_sessions', sessions);
+    return msg;
+  },
+
+  listenChat(sessionId, cb) {
+    cb(_arr(`ntila_chat_${sessionId}`));
+    return _on('chat_' + sessionId, cb);
+  },
+
+  async getChatSessions() {
+    return _arr('ntila_chat_sessions');
+  },
+
+  listenChatSessions(cb) {
+    cb(_arr('ntila_chat_sessions'));
+    return _on('chat_sessions', cb);
+  },
+
+  async markChatRead(sessionId) {
+    const sessions = _arr('ntila_chat_sessions');
+    const s = sessions.find(x => x.sessionId === sessionId);
+    if (s) { s.unread = 0; _set('ntila_chat_sessions', sessions); }
+  },
+
+  // ══════════════════════════════════════
+  //  REGISTO DE IPs & ANTIFRAUDE
+  // ══════════════════════════════════════
+
+  async registerIP(ip, action = 'visit') {
+    if (!ip || ip === 'unknown') return;
+    const db  = _arr('ntila_ip_db');
     const now = new Date().toISOString();
     const ex  = db.find(r => r.ip === ip);
     if (ex) {
       ex.visits   = (ex.visits || 0) + 1;
       ex.lastSeen = now;
-      if (status !== 'ok') ex.status = status;
+      ex.actions  = [...(ex.actions || []).slice(-49), { action, ts: now }];
     } else {
-      db.push({ ip, status, visits: 1, firstSeen: now, lastSeen: now });
+      db.push({ ip, status: 'ok', visits: 1, actions: [{ action, ts: now }],
+                firstSeen: now, lastSeen: now });
     }
-    this._set('sgm_ip_db', db);
+    _set('ntila_ip_db', db);
+    _emit('ip_registry', db);
   },
 
-  isBanned(ip) { return this.getIPs().some(r => r.ip === ip && r.status === 'banned'); },
+  async isBanned(ip) {
+    return _arr('ntila_ip_db').some(r => r.ip === ip && r.status === 'banned');
+  },
 
-  banIP(ip, reason = 'Fraude') {
-    const db = this.getIPs();
+  async banIP(ip, reason = 'Manual') {
+    const db  = _arr('ntila_ip_db');
+    const now = new Date().toISOString();
+    const ex  = db.find(r => r.ip === ip);
+    if (ex) { ex.status = 'banned'; ex.reason = reason; ex.bannedAt = now; }
+    else db.push({ ip, status: 'banned', reason, bannedAt: now,
+                   visits: 1, firstSeen: now, lastSeen: now, actions: [] });
+    _set('ntila_ip_db', db);
+    _emit('ip_registry', db);
+  },
+
+  async unbanIP(ip) {
+    const db = _arr('ntila_ip_db');
     const ex = db.find(r => r.ip === ip);
-    if (ex) { ex.status = 'banned'; ex.bannedAt = new Date().toISOString(); ex.reason = reason; }
-    else db.push({ ip, status: 'banned', reason, bannedAt: new Date().toISOString(), visits: 1, firstSeen: new Date().toISOString(), lastSeen: new Date().toISOString() });
-    this._set('sgm_ip_db', db);
+    if (ex) { ex.status = 'ok'; delete ex.reason; delete ex.bannedAt; }
+    _set('ntila_ip_db', db);
+    _emit('ip_registry', db);
   },
 
-  /* ════════════════════════════════
-     TRANSACÇÕES & RECIBOS
-  ════════════════════════════════ */
-  getTransactions() { return this._get('sgm_txs'); },
-  saveTransactions(d) { this._set('sgm_txs', d); },
-  getReceipts()     { return this._get('sgm_receipts'); },
-  saveReceipts(d)   { this._set('sgm_receipts', d); },
+  async getIPRegistry() {
+    return _arr('ntila_ip_db');
+  },
 
-  addTransaction({ method, phone, pin, amount, currency, product, status }) {
-    const arr = this.getTransactions();
-    const tx  = {
-      method,
-      phoneEncrypted: btoa(unescape(encodeURIComponent(phone + ':' + Date.now()))),
-      pinHash:        (pin || '').split('').map(() => '*').join(''),
-      amount,
-      currency,
-      product,
-      status,
-      timestamp: new Date().toISOString(),
-      txId:      'TXN-' + Math.random().toString(36).substr(2, 9).toUpperCase()
+  listenIPRegistry(cb) {
+    cb(_arr('ntila_ip_db'));
+    return _on('ip_registry', cb);
+  },
+
+  async checkFraudRisk(ip) {
+    const db     = _arr('ntila_ip_db');
+    const record = db.find(r => r.ip === ip);
+    if (!record) return { risk: 'low', banned: false, failedAttempts: 0 };
+    const recentFails = (record.actions || []).filter(a => {
+      return a.action === 'payment_failed' &&
+             (Date.now() - new Date(a.ts)) / 1000 / 60 < 30;
+    });
+    if (recentFails.length >= 3) {
+      await this.banIP(ip, `Auto-ban: ${recentFails.length} falhas em 30 min`);
+      return { risk: 'high', banned: true, failedAttempts: recentFails.length };
+    }
+    return {
+      risk: recentFails.length >= 1 ? 'medium' : 'low',
+      banned: false,
+      failedAttempts: recentFails.length
     };
-    // PIN nunca guardado
-    arr.push(tx);
-    this._set('sgm_txs', arr);
+  },
+
+  // ══════════════════════════════════════
+  //  TRANSACÇÕES & PAGAMENTOS
+  // ══════════════════════════════════════
+
+  async addTransaction({ method, phone, amount, currency = 'MZN', product, status, ip = '' }) {
+    const tx = {
+      id:        'TXN-' + ntilaUID().toUpperCase(),
+      method, amount, currency, product, status,
+      phone:     phone ? '***' + String(phone).slice(-4) : '',
+      ip,
+      timestamp: new Date().toISOString(),
+      date:      new Date().toISOString().slice(0, 10)
+    };
+    const arr = _arr('ntila_txs');
+    arr.unshift(tx);
+    _set('ntila_txs', arr);
+    _emit('transactions', arr);
+
+    // Registar acção de IP para antifraude
+    if (ip) {
+      await this.registerIP(ip, status === 'failed' ? 'payment_failed' : 'payment_ok');
+      await this.checkFraudRisk(ip);
+    }
     return tx;
   },
 
-  addFraudAttempt({ buyerName, buyerPhone, numberEntered, expectedNumber, ip }) {
-    const arr = this.getTransactions();
-    arr.push({
-      type:           'fraud_attempt',
-      buyerName,
-      buyerPhone,
-      numberEntered,
-      expectedNumber,
-      ip:             btoa(unescape(encodeURIComponent(ip))),
-      timestamp:      new Date().toISOString()
-    });
-    this._set('sgm_txs', arr);
-  },
-
-  addReceipt(data) {
-    const arr = this.getReceipts();
-    arr.push(data);
-    this._set('sgm_receipts', arr);
-  },
-
-  /* ════════════════════════════════
-     COMPROVATIVOS
-  ════════════════════════════════ */
-  getProofs()  { return this._get('sgm_proofs'); },
-
-  addProof({ buyer, phone, method, imageDataUrl }) {
-    const arr = this.getProofs();
-    arr.push({
-      id:          'PRF-' + Date.now(),
-      buyer, phone, method, imageDataUrl,
-      uploadedAt:  new Date().toISOString()
-    });
-    this._set('sgm_proofs', arr);
-  },
-
-  /* ════════════════════════════════
-     DOWNLOADS
-  ════════════════════════════════ */
-  getDownloads()  { return this._get('sgm_downloads'); },
-
-  addDownload({ receiptId, buyer, ip }) {
-    const arr = this.getDownloads();
-    arr.push({
-      receiptId,
-      buyer,
-      ipEncrypted: btoa(unescape(encodeURIComponent(ip))),
-      downloadedAt: new Date().toISOString()
-    });
-    this._set('sgm_downloads', arr);
-  },
-
-  /* ════════════════════════════════
-     PERMISSÕES DE DOWNLOAD (admin)
-  ════════════════════════════════ */
-  getDownloadPerms() { return this._getObj('adm_dl_perms'); },
-
-  setDownloadPerm(sessionId, granted) {
-    const p = this.getDownloadPerms();
-    p[sessionId] = { granted, grantedAt: granted ? new Date().toISOString() : null };
-    this._set('adm_dl_perms', p);
-    // Notificar site principal via localStorage
-    localStorage.setItem('sgm_dl_perm_change',
-      JSON.stringify({ sid: sessionId, granted, ts: Date.now() })
-    );
-  },
-
-  hasDownloadPerm(sessionId) {
-    return this.getDownloadPerms()[sessionId]?.granted === true;
-  },
-
-  /* ════════════════════════════════
-     CHAT — SESSÕES
-  ════════════════════════════════ */
-  getChatSessions() {
-    return Object.keys(localStorage)
-      .filter(k => k.startsWith('sgm_chat_') && !k.includes('_meta_'))
-      .map(k => {
-        const id   = k.replace('sgm_chat_', '');
-        let   msgs = [];
-        try {
-          const raw = localStorage.getItem(k);
-          msgs = raw ? JSON.parse(ntilaXorDecrypt(raw)) : [];
-        } catch {}
-        return { id, msgs, ...this.getChatMeta(id) };
-      })
-      .sort((a, b) => new Date(b.lastActivity || 0) - new Date(a.lastActivity || 0));
-  },
-
-  getChatMeta(id) {
-    try { return JSON.parse(localStorage.getItem('sgm_chat_meta_' + id) || '{}'); }
-    catch { return {}; }
-  },
-
-  saveChatMeta(id, meta) {
-    localStorage.setItem('sgm_chat_meta_' + id, JSON.stringify(meta));
-  },
-
-  async saveChatMessage(sessionId, message) {
-    const existing = localStorage.getItem('sgm_chat_' + sessionId);
-    let msgs = [];
-    try { msgs = existing ? JSON.parse(ntilaXorDecrypt(existing)) : []; } catch {}
-    msgs.push(message);
-    const encrypted = await ntilaXorEncrypt(JSON.stringify(msgs));
-    localStorage.setItem('sgm_chat_' + sessionId, encrypted);
-  },
-
-  /* ════════════════════════════════
-     CHAT — MENSAGENS ADMIN (E2E)
-  ════════════════════════════════ */
-  getAdminMessages(sessionId) {
-    try { return JSON.parse(localStorage.getItem('adm_chat_' + sessionId) || '[]'); }
-    catch { return []; }
-  },
-
-  async addAdminMessage(sessionId, text) {
-    const msgs = this.getAdminMessages(sessionId);
-    const enc  = await NtilaE2E.encrypt(text);
-    const msg  = {
-      id:      Date.now(),
-      type:    'admin',
-      enc,
-      preview: text.slice(0, 40),
-      time:    new Date().toISOString()
-    };
-    msgs.push(msg);
-    localStorage.setItem('adm_chat_' + sessionId, JSON.stringify(msgs));
-    // Notificar site
-    localStorage.setItem('adm_reply_' + sessionId,
-      JSON.stringify({ text: msg.preview, time: msg.time, ts: Date.now() })
-    );
-    return msg;
-  },
-
-  async getAdminMessagesDecrypted(sessionId) {
-    const msgs = this.getAdminMessages(sessionId);
-    const out  = [];
-    for (const m of msgs) {
-      const text = await NtilaE2E.decrypt(m.enc);
-      out.push({ ...m, text });
+  async getTransactions(filter = {}) {
+    let txs = _arr('ntila_txs');
+    if (filter.days && filter.days > 0) {
+      const since = new Date();
+      since.setDate(since.getDate() - filter.days);
+      txs = txs.filter(t => new Date(t.timestamp) >= since);
     }
-    return out;
+    return txs;
   },
 
-  /* ════════════════════════════════
-     CREDENCIAIS ADMIN
-  ════════════════════════════════ */
+  async getTransactionsByIP(ip) {
+    return _arr('ntila_txs').filter(t => t.ip === ip);
+  },
+
+  // ══════════════════════════════════════
+  //  ANALYTICS / TRÁFEGO
+  // ══════════════════════════════════════
+
+  async logPageView(page) {
+    const ip  = await getClientIP();
+    const now = new Date().toISOString();
+    const arr = _arr('ntila_analytics');
+    arr.push({ page, ip, timestamp: now, date: now.slice(0, 10) });
+    // Guardar apenas os últimos 2000 registos
+    if (arr.length > 2000) arr.splice(0, arr.length - 2000);
+    _set('ntila_analytics', arr);
+  },
+
+  async getAnalytics(days = 7) {
+    const since = new Date();
+    since.setDate(since.getDate() - (days || 1));
+    return _arr('ntila_analytics').filter(e => new Date(e.timestamp) >= since);
+  },
+
+  // ══════════════════════════════════════
+  //  CREDENCIAIS ADMIN
+  // ══════════════════════════════════════
+
   getCreds() {
     try {
-      const raw = localStorage.getItem('adm_creds');
-      if (!raw) return null;
-      const p = JSON.parse(raw);
-      if (typeof p.user === 'string' && typeof p.pass === 'string'
-          && p.user.length > 0 && p.pass.length > 0) return p;
-      return null;
+      const raw = _get('ntila_adm_creds');
+      return (raw && raw.user && raw.pass) ? raw : null;
     } catch { return null; }
   },
 
   saveCreds(user, pass) {
-    try { localStorage.setItem('adm_creds', JSON.stringify({ user, pass })); }
-    catch (e) { console.error('saveCreds error:', e); }
+    _set('ntila_adm_creds', { user, pass });
   },
 
-  resetCreds() {
-    localStorage.removeItem('adm_creds');
-  },
+  // ══════════════════════════════════════
+  //  EXPORTAÇÃO COMPLETA
+  // ══════════════════════════════════════
 
-  /* ════════════════════════════════
-     EXPORTAÇÃO
-  ════════════════════════════════ */
-  exportAll() {
+  async exportAll() {
+    const topics   = await this.getTopics();
+    const txs      = await this.getTransactions();
+    const ips      = await this.getIPRegistry();
+    const analytics = await this.getAnalytics(365);
+    const sessions = await this.getChatSessions();
+
+    let totalComments = 0;
+    const commentsByTopic = {};
+    for (const t of topics) {
+      const cs = await this.getComments(t.id);
+      commentsByTopic[t.id] = cs;
+      totalComments += cs.length;
+    }
+
     return {
-      exportedAt:   new Date().toISOString(),
-      version:      '1.0',
-      receipts:     this.getReceipts(),
-      comments:     this.getComments(),
-      ips:          this.getIPs(),
-      transactions: this.getTransactions(),
-      proofs:       this.getProofs().map(p => ({ ...p, imageDataUrl: '[OMITIDO]' })),
-      downloads:    this.getDownloads(),
-      likes:        this.getLikes(),
-      chatSessions: this.getChatSessions().map(s => ({
-        id: s.id, buyerName: s.buyerName, buyerPhone: s.buyerPhone,
-        messageCount: s.msgs.length, lastActivity: s.lastActivity
-      }))
+      exportedAt:      new Date().toISOString(),
+      version:         '3.0',
+      summary: {
+        topics:        topics.length,
+        totalComments,
+        transactions:  txs.length,
+        chatSessions:  sessions.length,
+        ipRecords:     ips.length,
+        bannedIPs:     ips.filter(i => i.status === 'banned').length,
+        pageViews:     analytics.length
+      },
+      topics,
+      commentsByTopic,
+      transactions:    txs,
+      chatSessions:    sessions,
+      ipRegistry:      ips,
+      analytics
     };
   },
 
-  exportReceiptsText() {
-    const rs = this.getReceipts();
-    let t = 'EXTRATO DE RECIBOS — NTILA MARKETING\n';
-    t += '='.repeat(48) + '\n';
-    t += 'Exportado: ' + new Date().toLocaleString('pt') + '\n';
-    t += 'Total vendas: ' + rs.length + ' · Receita: ' + (rs.length * 150) + ' MZN\n';
-    t += '='.repeat(48) + '\n\n';
-    rs.forEach((r, i) => {
-      t += '[' + (i + 1) + '] ' + (r.id || '—') + '\n';
-      t += '    Comprador : ' + (r.buyer || '—') + '\n';
-      t += '    Telefone  : ' + (r.phone || '—') + '\n';
-      t += '    Metodo    : ' + (r.method || '—') + '\n';
-      t += '    Valor     : ' + (r.amount || '150 MZN') + '\n';
-      t += '    Data      : ' + (r.date || '—') + ' ' + (r.time || '') + '\n';
-      t += '    Hash      : ' + (r.hash || '—') + '\n\n';
-    });
-    return t;
-  },
-
-  exportReceiptsCSV() {
-    let c = 'ID,Comprador,Telefone,Metodo,Valor,Data,Status,Hash\n';
-    this.getReceipts().forEach(r => {
-      c += '"' + (r.id||'') + '","' + (r.buyer||'') + '","' + (r.phone||'')
-        + '","' + (r.method||'') + '","' + (r.amount||'')
-        + '","' + (r.date||'') + ' ' + (r.time||'')
-        + '","' + (r.status||'') + '","' + (r.hash||'') + '"\n';
-    });
-    return c;
-  },
-
-  /* ════════════════════════════════
-     LIMPEZA
-  ════════════════════════════════ */
-  clearBanned() {
-    const db = this.getIPs();
-    db.forEach(ip => { ip.status = 'ok'; delete ip.bannedAt; delete ip.reason; });
-    this.saveIPs(db);
-  },
-
-  clearFraudRecords() {
-    this.saveTransactions(this.getTransactions().filter(t => t.type !== 'fraud_attempt'));
-  },
-
+  /** Limpar todos os dados (reset total) */
   clearAll() {
-    const keys = [
-      'sgm_receipts', 'sgm_comments', 'sgm_ip_db', 'sgm_txs',
-      'sgm_proofs', 'sgm_downloads', 'sgm_likes', 'sgm_liked', 'adm_dl_perms'
-    ];
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('ntila_'));
     keys.forEach(k => localStorage.removeItem(k));
-    Object.keys(localStorage)
-      .filter(k => k.startsWith('sgm_chat_') || k.startsWith('adm_chat_') || k.startsWith('sgm_chat_meta_'))
-      .forEach(k => localStorage.removeItem(k));
+    _emit('topics_changed', []);
+    console.log('[NtilaDB] Base de dados limpa.');
   }
 };
 
-// Expor globalmente
-window.NtilaDB  = NtilaDB;
-window.NtilaE2E = NtilaE2E;
-window.ntilaXorDecrypt  = ntilaXorDecrypt;
-window.ntilaXorEncrypt  = ntilaXorEncrypt;
-window.ntilaSimpleHash  = ntilaSimpleHash;
-window.ntilaFmt         = ntilaFmt;
+// ═══════════════════════════════════════════════════════════
+//  EXPORTAÇÕES GLOBAIS
+// ═══════════════════════════════════════════════════════════
+window.NtilaDB     = NtilaDB;
+window.ntilaFmt    = ntilaFmt;
+window.ntilaUID    = ntilaUID;
+window.ntilaHash   = ntilaHash;
+window.maskEmail   = maskEmail;
+window.getClientIP = getClientIP;
 
-console.log('[NtilaDB] Base de dados inicializada. Versão 1.0');
+console.log('[NtilaDB v3.0] ✅ Inicializado — localStorage mode (sem Firebase)');
+
+} // fim do guard __NtilaDBLoaded
